@@ -30,8 +30,8 @@ int FlvTag::process_tag(TSIOBufferReader readerp, bool complete)
 	}
 
 	if (rc) {
-		head_avail = TSIOBufferReaderAvail(head_reader);
-		content_length = head_avail;
+//		head_avail = TSIOBufferReaderAvail(head_reader);
+		content_length = cl - start;
 		TSDebug(PLUGIN_NAME," content_length = %d", content_length);
 	}
 
@@ -237,34 +237,44 @@ FlvTag::process_decrypt_body()
 	int64_t avail;
 	int32_t des_length = 136;
 	int32_t decrypt_length = 128;
-	int32_t need_read_length = des_length+(decrypt_length-start);
+	int32_t need_read_length = des_length+start;
 	u_char buf[need_read_length];
 	u_char des_buf[des_length];
 
 	avail = TSIOBufferReaderAvail(tag_reader);
 	if (avail < need_read_length)
 		return 0;
-
+	int i = 0;
 	IOBufferReaderCopy(tag_reader, buf, need_read_length);
+	for(i = 0; i < need_read_length; i++) {
+		TSDebug(PLUGIN_NAME, "buf %d", buf[i]);
+	}
 //	strncpy((char *)des_buf, (char *)buf , des_length);
 	memcpy(des_buf, buf, des_length);
+	for(i = 0; i < 136; i++) {
+		TSDebug(PLUGIN_NAME, "need decrypt des to en %d", des_buf[i]);
+	}
 
 	des_decrypt(tdes_key, des_buf, des_length);
-	TSDebug(PLUGIN_NAME, "buf len = %d, '%.*s'", need_read_length,need_read_length, buf);
-	TSDebug(PLUGIN_NAME, "des_buf len = %d, '%.*s'", decrypt_length, decrypt_length, des_buf);
+
+	for(i = 0; i < 128; i++) {
+		TSDebug(PLUGIN_NAME, "need decrypt des to de %d", des_buf[i]);
+	}
 
 
 	need_des_body = (u_char *)TSmalloc(sizeof(u_char)*(decrypt_length));
 
-	int32_t need_des_length = des_length - start;
+	int32_t need_des_length = decrypt_length - start;
 	memcpy(need_des_body, des_buf+start, need_des_length);
-	memcpy(need_des_body+need_des_length, buf + des_length, decrypt_length - need_des_length);
+	memcpy(need_des_body+need_des_length, buf + des_length, start);
 //	strncpy((char *)need_des_body, (char *)(des_buf+start) , need_des_length);
 //	strncpy((char *)(need_des_body +need_des_length), (char *)(buf + des_length), decrypt_length - need_des_length);
 
-	dup_pos = des_length - decrypt_length; //视频文件已经丢弃了多少数据
+	dup_pos = start; //视频文件已经丢弃了多少数据
 
-	TSDebug(PLUGIN_NAME, "need_des_body len = %d, '%.*s'", decrypt_length, decrypt_length, need_des_body);
+	for(i = 0; i < 128; i++) {
+		TSDebug(PLUGIN_NAME, "need decrypt need_des_body %d", need_des_body[i]);
+	}
 //	TSIOBufferCopy(head_buffer, tag_reader, read_size, 0);
 	TSIOBufferReaderConsume(tag_reader, need_read_length);
 
@@ -309,13 +319,24 @@ FlvTag::process_encrypt_body()
 		TSIOBufferReaderConsume(tag_reader, decrypt_length);
 		dup_pos +=decrypt_length;
 	}
-	TSDebug(PLUGIN_NAME," not des_encrypt '%.*s'", decrypt_length, need_des_body);
-	TSDebug(PLUGIN_NAME," not des_encrypt '%d'", strlen((const char*)need_des_body));
+	int i = 0;
+	for(i = 0; i < 128; i++) {
+		TSDebug(PLUGIN_NAME, "no need decrypt des to de %d", need_des_body[i]);
+	}
 	TSDebug(PLUGIN_NAME," tdes_key '%.*s'", 8, tdes_key);
 	des_encrypt(tdes_key,need_des_body,decrypt_length);
-	TSDebug(PLUGIN_NAME," des_encrypt '%.*s'", des_length, need_des_body);
-	TSDebug(PLUGIN_NAME," des_encrypt '%d'", strlen((const char*)need_des_body));
+	for(i = 0; i < 136; i++) {
+		TSDebug(PLUGIN_NAME, "no need decrypt des to en %d", need_des_body[i]);
+	}
 	TSIOBufferWrite(head_buffer,need_des_body,des_length);
+
+	//要把tag_reader消费干净
+	avail = TSIOBufferReaderAvail(tag_reader);
+	TSDebug(PLUGIN_NAME," process_encrypt_body last avail = %d!",avail);
+	if(avail > 0) {
+		TSIOBufferCopy(head_buffer, tag_reader, avail, 0);
+		TSIOBufferReaderConsume(tag_reader, avail);
+	}
 
 	TSDebug(PLUGIN_NAME," success!!!!!!!!!!!!!!!!!!");
 	return 1;

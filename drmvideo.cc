@@ -368,6 +368,7 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 			TSDebug(PLUGIN_NAME, "ret = 0 goto trans");
 			goto trans;
 		}
+		TSDebug(PLUGIN_NAME, "ret = %d",ret);
 		vtc->parse_over = true;
 
 		vtc->output.buffer = TSIOBufferCreate();
@@ -377,6 +378,7 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 		tag_avail = ftag->write_out(vtc->output.buffer);
 		if (tag_avail > 0) {//专门来处理头的数据
 			vtc->total += tag_avail;
+			TSDebug(PLUGIN_NAME, "head length = %d total = %d",tag_avail,vtc->total);
 			write_down = true;
 		}
 	}
@@ -386,7 +388,7 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 		TSIOBufferCopy(vtc->output.buffer, vtc->res_reader, avail, 0);
 		TSIOBufferReaderConsume(vtc->res_reader, avail);
 		vtc->total += avail;
-
+		TSDebug(PLUGIN_NAME, "avail > 0  = %d total = %d",avail,vtc->total);
 		write_down = true;
 	}
 
@@ -398,6 +400,7 @@ trans:
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_READY, input_vio);
 	} else {//如果没有的话，就通知write_complete
 		TSVIONBytesSet(vtc->output.vio, vtc->total);
+		TSDebug(PLUGIN_NAME, "xxxxxxxxxxx total = %d",vtc->total);
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
 	}
 
