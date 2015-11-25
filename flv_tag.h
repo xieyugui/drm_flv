@@ -16,22 +16,65 @@
 
 #define PLUGIN_NAME "drm_video"
 
+#define VIDEO_SIGNATURE_LENGTH 3
+#define FLV_1_NEED_DES_LENGTH 128
+#define FLV_1_DES_LENGTH 136
+
+#define FLV_UI32(x) (int)(((x[0]) << 24) + ((x[1]) << 16) + ((x[2]) << 8) + (x[3])) //将字符串转为整数
+#define FLV_UI24(x) (int)(((x[0]) << 16) + ((x[1]) << 8) + (x[2]))
+#define FLV_UI16(x) (int)(((x[0]) << 8) + (x[1]))
+#define FLV_UI8(x) (int)((x))
+
+//TAG 类型 8:音频 9:视频 18:脚本 其他:保留
+#define FLV_AUDIODATA   8
+#define FLV_VIDEODATA   9
+#define FLV_SCRIPTDATAOBJECT    18
+
+typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
+typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
+
+//typedef struct {
+//	u_char signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
+//	uint32_t version; //版本
+//	uint32_t videoid_size; //videoid 长度
+//} video_head_common;
+
+//typedef struct {
+//	u_char *videoid;
+//	uint32_t userid_size;
+//	u_char *userid;
+//	uint32_t reserved_size;
+//	u_char *reserved;
+//};
+
+typedef struct {
+        unsigned char type; //1 bytes TAG 类型 8:音频 9:视频 18:脚本 其他:保留
+        unsigned char datasize[3];// 3 bytes 数据长度   在数据区的长度
+        unsigned char timestamp[3];// 3 bytes 时间戳  整数，单位是毫秒。对于脚本型的tag总是0
+        unsigned char timestamp_ex;//时间戳扩展	1 bytes	将时间戳扩展为4bytes，代表高8位。很少用到
+        unsigned char streamid[3];// StreamsID	3 bytes	总是0
+} FLVTag_t;// TAG 头信息
+
 class FlvTag;
 typedef int (FlvTag::*FTHandler) ();
 
 class FlvTag
 {
 public:
-	FlvTag() : tag_buffer(NULL), tag_reader(NULL), head_length(0),
-		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),
-		content_length(0), start(0), key_found(false), video_type(0), version(0), need_des_body(NULL),
-		videoid_size(0), videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL)
+	FlvTag() : tag_buffer(NULL), tag_reader(NULL), drm_head_length(0),video_body_size(0),version(0),videoid_size(0),
+		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),discard_size(0),
+		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),
+		videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL),dup_reader(NULL),body_buffer(NULL),body_reader(NULL)
 	{
 		tag_buffer = TSIOBufferCreate();
 		tag_reader = TSIOBufferReaderAlloc(tag_buffer);
+		dup_reader = TSIOBufferReaderAlloc(tag_buffer);
 
 		head_buffer = TSIOBufferCreate();
 		head_reader = TSIOBufferReaderAlloc(head_buffer);
+
+		body_buffer = TSIOBufferCreate();
+		body_reader = TSIOBufferReaderAlloc(body_buffer);
 
 		current_handler = &FlvTag::process_header;
 	}
@@ -42,6 +85,11 @@ public:
 			TSIOBufferReaderFree(tag_reader);
 			tag_reader = NULL;
 		}
+
+        if (dup_reader) {
+            TSIOBufferReaderFree(dup_reader);
+            dup_reader = NULL;
+        }
 
 		if (tag_buffer) {
 			TSIOBufferDestroy(tag_buffer);
@@ -56,6 +104,16 @@ public:
         if (head_buffer) {
             TSIOBufferDestroy(head_buffer);
             head_buffer = NULL;
+        }
+
+        if (body_reader) {
+            TSIOBufferReaderFree(body_reader);
+            body_reader = NULL;
+        }
+
+        if (body_buffer) {
+            TSIOBufferDestroy(body_buffer);
+            body_buffer = NULL;
         }
 
         if (videoid) {
@@ -73,12 +131,13 @@ public:
         		reserved = NULL;
         }
 
-        if (need_des_body) {
-        		TSfree(need_des_body);
-        		need_des_body = NULL;
-        }
+//        if (need_des_body) {
+//        		TSfree(need_des_body);
+//        		need_des_body = NULL;
+//        }
 
         tdes_key = NULL;
+//        vheadcommon = NULL;
 	}
 
 	int process_tag(TSIOBufferReader reader, bool complete);
@@ -88,23 +147,32 @@ public:
 	int process_header_videoid();
 	int process_header_userid();
 	int process_header_reserved();
-	int process_initial_body();//丢弃的数据
 	int process_decrypt_body();//解密
-	int process_encrypt_body();//加密
+	int process_initial_video_header();
+	int process_initial_body();
+	int process_medial_body();
+	int process_check_des_body();
+
 
 public:
 	TSIOBuffer tag_buffer;
 	TSIOBufferReader tag_reader;
+	TSIOBufferReader    dup_reader;
 
 	TSIOBuffer head_buffer;
 	TSIOBufferReader head_reader;
+
+	TSIOBuffer body_buffer;
+	TSIOBufferReader body_reader;
 
 	FTHandler current_handler;
 	int64_t tag_pos;
 	int64_t dup_pos;
 	int64_t cl;
 	int64_t content_length;
-	int64_t head_length;
+	int64_t drm_head_length;
+	int64_t video_head_length;
+//	video_head_common vheadcommon;
 
 	//----DRM header start
 	//char signature[3]; 标志位
@@ -125,12 +193,13 @@ public:
 //	uint32_t section_count; //4  count>0 && count<=5 加密片段个数
 //	uint64_t section_length; //8
 
+	uint64_t discard_size;
+
 	uint32_t reserved_size; //4
 	u_char *reserved;
 	//----DRM header  end
 
-	u_char *need_des_body;//需要进行加密的body字节
-
+	uint64_t video_body_size;
 	int64_t start;
 	int16_t video_type;
     u_char *tdes_key; //des key

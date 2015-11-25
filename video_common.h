@@ -21,11 +21,9 @@
 
 #include "flv_tag.h"
 
-#define PLUGIN_NAME "drm_video"
+//#define PLUGIN_NAME "drm_video"
 //des key
 static u_char *des_key;
-
-typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
 
 class IOHandle
 {

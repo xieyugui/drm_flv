@@ -391,6 +391,7 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 		TSDebug(PLUGIN_NAME, "avail > 0  = %d total = %d",avail,vtc->total);
 		write_down = true;
 	}
+	TSDebug(PLUGIN_NAME, "TSVIONTodoGet  toread=%d", toread);
 
 trans:
 	if (write_down)
