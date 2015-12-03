@@ -5,8 +5,8 @@
  *      Author: xie
  */
 
-#ifndef _VIDEO_COMMON_H_
-#define _VIDEO_COMMON_H_
+#ifndef __VIDEO_COMMON_H__
+#define __VIDEO_COMMON_H__
 
 #include <string.h>
 #include <stdlib.h>
@@ -107,4 +107,4 @@ public:
 	VideoTransformContext *vtc;
 };
 
-#endif /* _VIDEO_COMMON_H_ */
+#endif /* __VIDEO_COMMON_H__ */

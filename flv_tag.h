@@ -5,8 +5,8 @@
  *      Author: xie
  */
 
-#ifndef _DRM_VIDEO_FLV_TAG_H_
-#define _DRM_VIDEO_FLV_TAG_H_
+#ifndef __FLV_TAG_H__
+#define __FLV_TAG_H__
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -33,19 +33,12 @@
 typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
 typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
 
-//typedef struct {
-//	u_char signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
-//	uint32_t version; //版本
-//	uint32_t videoid_size; //videoid 长度
-//} video_head_common;
+typedef struct {
+	u_char signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
+	uint32_t version; //版本
+	uint32_t videoid_size; //videoid 长度
+} drm_head_common;
 
-//typedef struct {
-//	u_char *videoid;
-//	uint32_t userid_size;
-//	u_char *userid;
-//	uint32_t reserved_size;
-//	u_char *reserved;
-//};
 
 typedef struct {
         unsigned char type; //1 bytes TAG 类型 8:音频 9:视频 18:脚本 其他:保留
@@ -55,6 +48,11 @@ typedef struct {
         unsigned char streamid[3];// StreamsID	3 bytes	总是0
 } FLVTag_t;// TAG 头信息
 
+union av_intfloat64 {
+    uint64_t i;
+    double f;
+};
+
 class FlvTag;
 typedef int (FlvTag::*FTHandler) ();
 
@@ -62,8 +60,8 @@ class FlvTag
 {
 public:
 	FlvTag() : tag_buffer(NULL), tag_reader(NULL), drm_head_length(0),video_body_size(0),version(0),videoid_size(0),
-		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),discard_size(0),
-		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),
+		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),discard_size(0),on_meta_data_size(0),
+		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),duration_time(0),
 		videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL),dup_reader(NULL),body_buffer(NULL),body_reader(NULL)
 	{
 		tag_buffer = TSIOBufferCreate();
@@ -137,7 +135,6 @@ public:
 //        }
 
         tdes_key = NULL;
-//        vheadcommon = NULL;
 	}
 
 	int process_tag(TSIOBufferReader reader, bool complete);
@@ -172,7 +169,6 @@ public:
 	int64_t content_length;
 	int64_t drm_head_length;
 	int64_t video_head_length;
-//	video_head_common vheadcommon;
 
 	//----DRM header start
 	//char signature[3]; 标志位
@@ -192,8 +188,14 @@ public:
 //	uint32_t section_size; //4
 //	uint32_t section_count; //4  count>0 && count<=5 加密片段个数
 //	uint64_t section_length; //8
+	uint64_t on_meta_data_size;
+
+
+//	uint32_t discard_size;
+//	uint32_t duration_time;
 
 	uint64_t discard_size;
+	double duration_time;
 
 	uint32_t reserved_size; //4
 	u_char *reserved;
@@ -206,4 +208,4 @@ public:
 	bool key_found;
 };
 
-#endif /* _DRM_VIDEO_FLV_TAG_H_ */
+#endif /* __FLV_TAG_H__ */

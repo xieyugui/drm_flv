@@ -4,8 +4,8 @@
  */
 
 
-#ifndef PLUGINS_DRM_VIDEO_DES_H_
-#define PLUGINS_DRM_VIDEO_DES_H_
+#ifndef __DES_H__
+#define __DES_H__
 
 
 
@@ -21,4 +21,4 @@ TSReturnCode des_encrypt(const u_char *key, u_char *data, unsigned len);
 TSReturnCode des_decrypt(const u_char *key, u_char *data, unsigned len);
 
 
-#endif /* PLUGINS_DRM_VIDEO_DES_H_ */
+#endif /* __DES_H__ */

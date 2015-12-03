@@ -3,8 +3,8 @@
  * Copyright (C) GS
  */
 
-#ifndef PLUGINS_DRM_VIDEO_DES_CC_
-#define PLUGINS_DRM_VIDEO_DES_CC_
+#ifndef __DES_CC__
+#define __DES_CC__
 
 #include "des.h"
 
@@ -58,4 +58,4 @@ des_decrypt(const u_char *key, u_char *data, unsigned len)
     return TS_SUCCESS;
 }
 
-#endif /* PLUGINS_DRM_VIDEO_FLV_ENCRYPTION_CC_ */
+#endif /* __DES_CC__ */
