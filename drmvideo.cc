@@ -96,7 +96,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 		if (start < 0 ) {
 			TSHttpTxnSetHttpRetStatus(rh, TS_HTTP_STATUS_BAD_REQUEST);
 			TSHttpTxnErrorBodySet(rh, TSstrdup("Invalid request."), sizeof("Invalid request.") - 1, NULL);
-			return TSREMAP_NO_REMAP;//?需不需要
+			//return TSREMAP_NO_REMAP;//?需不需要  删除query ，走正常的流程
 		}
 		//删除query string
 		if (TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, "", -1) == TS_ERROR) {

@@ -66,51 +66,61 @@ int64_t FlvTag::write_out(TSIOBuffer buffer) {
 	return head_avail;
 }
 
-int FlvTag::process_header() //先解析pcf 的头 signature, version, videoid tag, userid tag, reserved tag
+int FlvTag::process_drm_header() //先解析pcf 的头 signature, version, videoid tag, userid tag, reserved tag
 {
 
 	int64_t avail;
+	size_t drm_header_size = get_drm_header_size();
+	drm_header header;
+	int result;
 
 	avail = TSIOBufferReaderAvail(tag_reader);
-	TSDebug(PLUGIN_NAME, " %s  avail = %d", __FUNCTION__, avail);
-	if (avail < 11)
+	if (avail < drm_header_size)
 		return 0;
 
-	TSDebug(PLUGIN_NAME, " %s  tag_pos = %d", __FUNCTION__, tag_pos);
+	TSDebug(PLUGIN_NAME, "drm_header_size = %d", drm_header_size);
 
+	result = flv_read_drm_header(&header);
 
-	TSIOBufferCopy(head_buffer, tag_reader, 3, 0);
-	TSIOBufferReaderConsume(tag_reader, 3);
+	tag_pos += drm_header_size;
+	TSIOBufferCopy(head_buffer, tag_reader, drm_header_size, 0);
+	TSIOBufferReaderConsume(tag_reader, drm_header_size);
 
-	IOBufferReaderCopy(tag_reader, &version, sizeof(uint32_be));
-	TSIOBufferCopy(head_buffer, tag_reader, sizeof(uint32_be), 0);
-	TSIOBufferReaderConsume(tag_reader, sizeof(uint32_be));
-	version = swap_uint32(version);
-	TSDebug(PLUGIN_NAME, " %s second version = %d %d", __FUNCTION__, version);
+	if(result != 0) {
+		return -1;
+	}
+
+//	TSIOBufferCopy(head_buffer, tag_reader, 3, 0);
+//	TSIOBufferReaderConsume(tag_reader, 3);
+//
+//	IOBufferReaderCopy(tag_reader, &version, sizeof(uint32_be));
+//	TSIOBufferCopy(head_buffer, tag_reader, sizeof(uint32_be), 0);
+//	TSIOBufferReaderConsume(tag_reader, sizeof(uint32_be));
+	version = swap_uint32(header.version);
+	TSDebug(PLUGIN_NAME, "drm version = %d", version);
 	if (version <= 0)
 		return -1;
 
-	IOBufferReaderCopy(tag_reader, &videoid_size, sizeof(uint32_be));
-	TSIOBufferCopy(head_buffer, tag_reader, sizeof(uint32_be), 0);
-	TSIOBufferReaderConsume(tag_reader, sizeof(uint32_be));
-	videoid_size = swap_uint32(videoid_size);
-	TSDebug(PLUGIN_NAME, " %s videoid_size = %d", __FUNCTION__, videoid_size);
+//	IOBufferReaderCopy(tag_reader, &videoid_size, sizeof(uint32_be));
+//	TSIOBufferCopy(head_buffer, tag_reader, sizeof(uint32_be), 0);
+//	TSIOBufferReaderConsume(tag_reader, sizeof(uint32_be));
+	videoid_size = swap_uint32(header.videoid_size);
+	TSDebug(PLUGIN_NAME, " drm videoid_size = %d", videoid_size);
 	if (videoid_size <= 0)
 		return -1;
 
-	tag_pos += 11;
 
-	TSDebug(PLUGIN_NAME, "process_header videoid_size=%d tag_pos=%d",
-			videoid_size, tag_pos);
 
-	this->current_handler = &FlvTag::process_header_videoid;
-	return process_header_videoid();
+	TSDebug(PLUGIN_NAME, "process_header tag_pos=%d", tag_pos); //已经消费了多少字节
+
+	this->current_handler = &FlvTag::process_drm_header_videoid;
+	return process_drm_header_videoid();
 }
 
-int FlvTag::process_header_videoid() {
+int FlvTag::process_drm_header_videoid() {
 	int64_t avail;
-	size_t videoid_size_length = sizeof(uint32_t);
-	int64_t read_size = videoid_size + videoid_size_length;
+	size_t userid_size_length = sizeof(uint32_t);
+	int64_t read_size = videoid_size + userid_size_length;
 
 	avail = TSIOBufferReaderAvail(tag_reader);
 	if (avail < read_size)
@@ -121,28 +131,27 @@ int FlvTag::process_header_videoid() {
 	TSIOBufferCopy(head_buffer, tag_reader, videoid_size, 0);
 	TSIOBufferReaderConsume(tag_reader, videoid_size);
 
-	IOBufferReaderCopy(tag_reader, &userid_size, videoid_size_length);
+	IOBufferReaderCopy(tag_reader, &userid_size, userid_size_length);
 	userid_size = swap_uint32(userid_size);
-	TSIOBufferCopy(head_buffer, tag_reader, videoid_size_length, 0);
-	TSIOBufferReaderConsume(tag_reader, videoid_size_length);
+	TSIOBufferCopy(head_buffer, tag_reader, userid_size_length, 0);
+	TSIOBufferReaderConsume(tag_reader, userid_size_length);
+
+	tag_pos += read_size;//总共消费了多少字节
 
 	if (userid_size <= 0)
 		return -1;
 
-	tag_pos += read_size;
-
-	TSDebug(PLUGIN_NAME,
-			"process_header videoid=%.*s, userid_size=%d, tag_pos=%d",
+	TSDebug(PLUGIN_NAME,"process_header_videoid videoid=%.*s, userid_size=%d, tag_pos=%d",
 			videoid_size, videoid, userid_size, tag_pos);
 
-	this->current_handler = &FlvTag::process_header_userid;
-	return process_header_userid();
+	this->current_handler = &FlvTag::process_drm_header_userid;
+	return process_drm_header_userid();
 }
 
-int FlvTag::process_header_userid() {
+int FlvTag::process_drm_header_userid() {
 	int64_t avail;
-	size_t userid_size_length = sizeof(uint32_t);
-	int64_t read_size = userid_size + userid_size_length;
+	size_t reserved_size_length = sizeof(uint32_t);
+	int64_t read_size = userid_size + reserved_size_length;
 
 	avail = TSIOBufferReaderAvail(tag_reader);
 	if (avail < read_size)
@@ -153,30 +162,29 @@ int FlvTag::process_header_userid() {
 	TSIOBufferCopy(head_buffer, tag_reader, userid_size, 0);
 	TSIOBufferReaderConsume(tag_reader, userid_size);
 
-	IOBufferReaderCopy(tag_reader, &reserved_size, userid_size_length);
+	IOBufferReaderCopy(tag_reader, &reserved_size, reserved_size_length);
 	reserved_size = swap_uint32(reserved_size);
-	TSIOBufferCopy(head_buffer, tag_reader, userid_size_length, 0);
-	TSIOBufferReaderConsume(tag_reader, userid_size_length);
+	TSIOBufferCopy(head_buffer, tag_reader, reserved_size_length, 0);
+	TSIOBufferReaderConsume(tag_reader, reserved_size_length);
 
 	tag_pos += read_size;
 
-	drm_head_length = tag_pos;
+	drm_head_length = tag_pos;//drm head 的长度
 
-	TSDebug(PLUGIN_NAME,
-			"process_header userid=%.*s, reserved_size=%d, tag_pos=%d",
+	TSDebug(PLUGIN_NAME,"process_header_userid userid=%.*s, reserved_size=%d, tag_pos=%d",
 			userid_size, userid, reserved_size, tag_pos);
 
 	if (reserved_size <= 0) {
-		this->current_handler = &FlvTag::process_decrypt_body;
-		return process_decrypt_body();
+		this->current_handler = &FlvTag::process_decrypt_flv_body;
+		return process_decrypt_flv_body();
 
 	} else {
-		this->current_handler = &FlvTag::process_header_reserved;
-		return process_header_reserved();
+		this->current_handler = &FlvTag::process_drm_header_reserved;
+		return process_drm_header_reserved();
 	}
 }
 
-int FlvTag::process_header_reserved() {
+int FlvTag::process_drm_header_reserved() {
 	int64_t avail;
 	u_char buf[reserved_size];
 
@@ -191,67 +199,57 @@ int FlvTag::process_header_reserved() {
 
 	tag_pos += reserved_size;
 
-	drm_head_length = tag_pos;
+	drm_head_length = tag_pos; //drm head 的长度
 
-	TSDebug(PLUGIN_NAME, "process_header reserved=%.*s", reserved_size,
-			reserved);
+	TSDebug(PLUGIN_NAME, "process_header_reserved reserved=%.*s", reserved_size,reserved);
 
-	this->current_handler = &FlvTag::process_decrypt_body;
-	return process_decrypt_body();
+	this->current_handler = &FlvTag::process_decrypt_flv_body;
+	return process_decrypt_flv_body();
 }
 
-//解密
-int FlvTag::process_decrypt_body() {
+//解密FLV 前136
+int FlvTag::process_decrypt_flv_body() {
 	int64_t avail;
-//	u_char buf[need_read_length];
 	u_char des_buf[FLV_1_DES_LENGTH];
 
 	avail = TSIOBufferReaderAvail(tag_reader);
-	TSDebug(PLUGIN_NAME, "process_decrypt_body avail %d", avail);
 	if (avail < FLV_1_DES_LENGTH)
 		return 0;
-	int i = 0;
-	IOBufferReaderCopy(tag_reader, des_buf, FLV_1_DES_LENGTH);
-	for (i = 0; i < FLV_1_DES_LENGTH; i++) {
-		TSDebug(PLUGIN_NAME, "des_buf %d", des_buf[i]);
-	}
 
+	IOBufferReaderCopy(tag_reader, des_buf, FLV_1_DES_LENGTH);
 
 	des_decrypt(tdes_key, des_buf, FLV_1_DES_LENGTH);
-
-	for (i = 0; i < 128; i++) {
-		TSDebug(PLUGIN_NAME, "need decrypt des to de %d", des_buf[i]);
-	}
 
 	TSIOBufferReaderConsume(tag_reader, FLV_1_DES_LENGTH);
 
 	avail = TSIOBufferReaderAvail(tag_reader);
-	TSDebug(PLUGIN_NAME, "process_decrypt_body FLV_1_DES_LENGTH avail %d",
-			avail);
+
 	if (avail > 0) {
-		u_char tag_reader_buf[avail];
+		u_char *tag_reader_buf = (u_char *)TSmalloc(sizeof(u_char) *avail);
 		IOBufferReaderCopy(tag_reader, tag_reader_buf, avail);
 		TSIOBufferReaderConsume(tag_reader, avail);
 		TSIOBufferWrite(tag_buffer, des_buf, FLV_1_NEED_DES_LENGTH);
 		TSIOBufferWrite(tag_buffer, tag_reader_buf, avail);
+		TSfree(tag_reader_buf);
 	} else {
 		TSIOBufferWrite(tag_buffer, des_buf, FLV_1_NEED_DES_LENGTH);
-//		TSIOBufferReaderCopy(tag_reader, des_buf, FLV_1_NEED_DES_LENGTH);
 	}
 
-	TSDebug(PLUGIN_NAME, "process_decrypt_body FLV_1_DES_LENGTH last avail %d",
-			TSIOBufferReaderAvail(tag_reader));
+	tag_pos += (FLV_1_DES_LENGTH - FLV_1_NEED_DES_LENGTH); //已经消费了多少  解密之后 又放回去了，也就是 136 － 128
 
-	tag_pos += (FLV_1_DES_LENGTH - FLV_1_NEED_DES_LENGTH); //已经消费了多少
+	TSDebug(PLUGIN_NAME, "process_decrypt_body tag_pos=%d", tag_pos);
 
-	this->current_handler = &FlvTag::process_initial_video_header;
-	return process_initial_video_header();
+	this->current_handler = &FlvTag::process_initial_flv_header;
+	return process_initial_flv_header();
 }
 
-int FlvTag::process_initial_video_header() {
+
+int FlvTag::process_initial_flv_header() {
 	int64_t avail;
 	flv_header header;
-	size_t need_length  = 9 +  sizeof(uint32_be);  // flv_header + first previoustagsize 第一个默认为0
+	int result;
+	size_t flv_header_size = get_flv_header_size();
+	size_t need_length  = flv_header_size +  sizeof(uint32_be);  // flv_header + first previoustagsize 第一个默认为0
 	//header长度4bytes 整个文件头的长度，一般是9（3+1+1+4），当然头部字段也有可能包含其它信息这个时间其长度就不是9了。
 	//FLV Body
 	//FLV body就是由很多tag组成的，一个tag包括下列信息：
@@ -261,33 +259,29 @@ int FlvTag::process_initial_video_header() {
 	if (avail < need_length)
 		return 0;
 
-	IOBufferReaderCopy(tag_reader, &header, need_length);
-	TSDebug(PLUGIN_NAME, "process_initial_video_header %.*s", 3, header.signature);
-	if (header.signature[0] != 'F' || header.signature[1] != 'L' || header.signature[2] != 'V')
-		return -1;
-
-	TSDebug(PLUGIN_NAME, "process_initial_video_header header.offset %d",
-			header.offset);
-//	if (*(uint32_t*) (buf + 9) != 0)
-//		return -1;
+	result = flv_read_flv_header(&header);
 
 	TSIOBufferCopy(flv_buffer, tag_reader, need_length, 0);
 	TSIOBufferReaderConsume(tag_reader, need_length);
-
 	tag_pos += need_length;
 
+	if(result != 0) {
+		return -1;
+	}
+
+	TSDebug(PLUGIN_NAME, "process_initial_video_header %.*s", 3, header.signature);
+	TSDebug(PLUGIN_NAME, "process_initial_video_header header.offset %d",header.offset);
 	TSDebug(PLUGIN_NAME, "process_initial_video_header  tag_pos = %d", tag_pos);
 
 	this->current_handler = &FlvTag::process_initial_body;
 	return process_initial_body();
 }
 
-//将没用的body 数据丢弃
 //解析metadataTag
 int FlvTag::process_initial_body() {
-	int64_t avail, sz;
+	uint64_t avail, sz;
 	uint32 body_length, timestamp;
-	size_t flv_tag_length = sizeof(flv_tag); //
+	size_t flv_tag_length = get_flv_tag_size(); //
 	TSDebug(PLUGIN_NAME, "process_initial_body");
 	avail = TSIOBufferReaderAvail(tag_reader);
 	TSDebug(PLUGIN_NAME, "process_initial_body avail=%d", avail);
@@ -296,19 +290,15 @@ int FlvTag::process_initial_body() {
 		flv_tag tag;
 		if (avail < flv_tag_length)
 			return 0;
-		IOBufferReaderCopy(tag_reader, &tag, flv_tag_length);
 
+		flv_read_flv_tag(&tag);
 		body_length = flv_tag_get_body_length(tag);
-		TSDebug(PLUGIN_NAME, "process_initial_body body_length=%d type = %d", body_length, tag.type);
+
 		sz = flv_tag_length + body_length + sizeof(uint32_be); //tag->(tag header, tag body), tagsize
+		TSDebug(PLUGIN_NAME, "process_initial_body body_length=%d type = %d", body_length, tag.type);
 
 		if (avail < sz)     // insure the whole tag
 			return 0;
-
-//		timestamp = flv_tag_get_timestamp(tag);
-//
-//		if (timestamp != 0)
-//			goto end;
 
 		if (tag.type == FLV_TAG_TYPE_VIDEO ) {
 			TSDebug(PLUGIN_NAME, "process_initial_body FLV_VIDEODATA 9");
@@ -317,7 +307,6 @@ int FlvTag::process_initial_body() {
 			TSDebug(PLUGIN_NAME, "process_initial_body FLV_TAG_TYPE_META");
 			on_meta_data_size = body_length;
 		}
-		TSDebug(PLUGIN_NAME, "process_initial_body sz=%d", sz);
 
 		TSIOBufferCopy(flv_buffer, tag_reader, sz, 0);
 		TSIOBufferReaderConsume(tag_reader, sz);
@@ -326,11 +315,12 @@ int FlvTag::process_initial_body() {
 		tag_pos += sz;
 
 	} while (avail > 0);
+
 	return 0;
 
 end:
 
-	TSDebug(PLUGIN_NAME, "end tag_pos %d", tag_pos);
+	TSDebug(PLUGIN_NAME, "process_initial_body tag_pos %d", tag_pos);
 	avail = TSIOBufferReaderAvail(flv_reader);
 	video_body_size += avail; //url?start=datasize (包括flv head + flv 脚本，即所有内容)
 
@@ -338,10 +328,11 @@ end:
 	return process_medial_body();
 }
 
+//丢失视频和音频
 int FlvTag::process_medial_body() {
 	int64_t avail, sz, pass, b_avail;
 	uint32 body_length, timestamp;
-	size_t flv_tag_length = sizeof(flv_tag);
+	size_t flv_tag_length = get_flv_tag_size();
 
 	TSDebug(PLUGIN_NAME, "process_medial_body");
 	avail = TSIOBufferReaderAvail(tag_reader);
@@ -350,16 +341,18 @@ int FlvTag::process_medial_body() {
 		flv_tag tag;
 		if (avail < flv_tag_length)
 			return 0;
-		IOBufferReaderCopy(tag_reader, &tag, flv_tag_length);
 
+		flv_read_flv_tag(&tag);
 		body_length = flv_tag_get_body_length(tag);
 		sz = flv_tag_length + body_length + sizeof(uint32_be); //tag->(tag header, tag body), tagsize
 
 		if (avail < sz)     // insure the whole tag
 			return 0;
+
 		video_body_size += sz;
+
 		if (tag.type == FLV_TAG_TYPE_VIDEO ) {
-			TSDebug(PLUGIN_NAME, "process_medial_body FLV_VIDEODATA 9");
+			TSDebug(PLUGIN_NAME, "process_medial_body FLV_TAG_TYPE_VIDEO");
 
 			timestamp = flv_tag_get_timestamp(tag);
 
@@ -369,13 +362,14 @@ int FlvTag::process_medial_body() {
 				TSDebug(PLUGIN_NAME, "process_medial_body duration_time＝%lf, ts= %d",duration_time,timestamp);
 
 			} else {
-				TSDebug(PLUGIN_NAME, "process_medial_body last !!!!!!!!");
-				TSDebug(PLUGIN_NAME, " process_encrypt_body last avail = %d!",avail);
+				TSDebug(PLUGIN_NAME, "video_body_size > start !!");
+				TSDebug(PLUGIN_NAME, "process_medial_body video_body_size＝%ld, start= %ld",video_body_size,start);
 				TSIOBufferCopy(flv_buffer, tag_reader, avail, 0);
 				TSIOBufferReaderConsume(tag_reader, avail);
 				tag_pos += avail;
-				TSDebug(PLUGIN_NAME, "success !!!!!! tag_pos = %d", tag_pos);
 				duration_time = duration_time/1000;
+
+				TSDebug(PLUGIN_NAME, "process_medial_body success!!! duration_audio_size＝%ld, tag_pos= %ld",duration_audio_size,tag_pos);
 				this->current_handler = &FlvTag::process_check_des_body;
 				return process_check_des_body();
 			}
@@ -385,6 +379,7 @@ int FlvTag::process_medial_body() {
 
 		TSIOBufferReaderConsume(tag_reader, sz);
 		duration_file_size += sz; //丢弃的多少数据
+
 		avail -= sz;
 
 		tag_pos += sz;
@@ -396,10 +391,12 @@ int FlvTag::process_medial_body() {
 
 int FlvTag::update_flv_meta_data() {
 	//copy FLV HEADER ＋ first TAG SIZE
-	size_t flv_header_length = 9 + sizeof(uint32_be);//sizeof(flv_header) + sizeof(uint32_be);
+	size_t flv_header_length = get_flv_header_size() + sizeof(uint32_be);//sizeof(flv_header) + sizeof(uint32_be);
+	size_t flv_tag_size = get_flv_tag_size();
 	TSIOBufferCopy(new_flv_buffer, flv_reader, flv_header_length, 0);
 	TSIOBufferReaderConsume(flv_reader, flv_header_length);
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data a");
+	TSDebug(PLUGIN_NAME, "update_flv_meta_data copy flv header + first tag size to new_flv_buffer");
+
 	//解析flv tag
 	flv_tag tag;
 	uint32 body_length;
@@ -410,9 +407,11 @@ int FlvTag::update_flv_meta_data() {
 	data = NULL;
 	on_metadata = NULL;
 	on_metadata_name = NULL;
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data b = %d",sizeof(flv_tag));
-	IOBufferReaderCopy(flv_reader, &tag, sizeof(flv_tag));
-	TSIOBufferReaderConsume(flv_reader, sizeof(flv_tag));
+
+	TSDebug(PLUGIN_NAME, "update_flv_meta_data flv_tag_size = %d",flv_tag_size);
+	IOBufferReaderCopy(flv_reader, &tag, flv_tag_size);
+	TSIOBufferReaderConsume(flv_reader, flv_tag_size);
+
 	body_length = flv_tag_get_body_length(tag);
 	TSDebug(PLUGIN_NAME, "update_flv_meta_data b = %d\n",body_length);
 	byte *buf;
@@ -705,7 +704,7 @@ int FlvTag::update_flv_meta_data() {
 
 end:
 	uint32 meta_data_length = amf_data_size(on_metadata_name) + amf_data_size(on_metadata);
-	prev_tag_size = sizeof(flv_tag) + meta_data_length;
+	prev_tag_size = flv_tag_size + meta_data_length;
     /* first "previous tag size" */
 //    size = swap_uint32(0);
 //    if (fwrite(&size, sizeof(uint32_be), 1, flv_out) != 1) {
@@ -718,7 +717,7 @@ end:
 //    omft.stream_id = uint32_to_uint24_be(0);
 //	TSIOBufferCopy(new_flv_buffer, flv_reader, sizeof(uint8), 0);
 	tag.body_length = uint32_to_uint24_be(meta_data_length);
-	IOBufferReaderCopy(new_flv_reader, &tag, sizeof(flv_tag));
+	IOBufferReaderCopy(new_flv_reader, &tag, flv_tag_size);
 
 	byte metadata_name_b[amf_data_size(on_metadata_name)];
 	amf_data_buffer_write(on_metadata_name,metadata_name_b, amf_data_size(on_metadata_name));
@@ -740,26 +739,26 @@ int FlvTag::process_check_des_body() {
 	int64_t avail, b_avail, need_read_buf;
 	int i = 0;
 	u_char *buf;
-	size_t need_read_length = 9+sizeof(uint32_be) *2 +sizeof(flv_tag)+on_meta_data_size;//sizeof(flv_header)+sizeof(uint32_be) *2 +sizeof(flv_tag)+on_meta_data_size;
+	size_t need_read_length =  get_flv_header_size()+sizeof(uint32_be) *2 + get_flv_tag_size()+on_meta_data_size;//sizeof(flv_header)+sizeof(uint32_be) *2 +sizeof(flv_tag)+on_meta_data_size;
 
 	b_avail = TSIOBufferReaderAvail(flv_reader);
 	avail = TSIOBufferReaderAvail(tag_reader);
 
-	if ((avail + b_avail) < FLV_1_NEED_DES_LENGTH or (avail + b_avail) < need_read_length)
+	if ((avail + b_avail) < (FLV_1_NEED_DES_LENGTH < need_read_length ? need_read_length: FLV_1_NEED_DES_LENGTH))
 		return 0;
 
 	if (avail) {
-		TSIOBufferCopy(flv_buffer, tag_reader, avail, 0);
+		TSIOBufferCopy(flv_buffer, tag_reader, avail, 0); //全部合并到flv_buffer
 		TSIOBufferReaderConsume(tag_reader, avail);
+		tag_pos += avail;
+		TSDebug(PLUGIN_NAME, "process_check_des_body tag_pos = %d\n",tag_pos);
 	}
 
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data 1");
 	//更新 onmetadata
 	update_flv_meta_data();
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data last");
 
 	b_avail = TSIOBufferReaderAvail(flv_reader);
-	if(b_avail > 0) {
+	if(b_avail > 0) {//因为onmetadata 更新后放在new_flv_buffer 中，所以将flv_buffer 中的剩余的数据放到new_flv_buffer中去
 		TSIOBufferCopy(new_flv_buffer, flv_reader, b_avail, 0);
 		TSIOBufferReaderConsume(flv_reader, b_avail);
 	}
@@ -771,13 +770,10 @@ int FlvTag::process_check_des_body() {
 	TSIOBufferReaderConsume(new_flv_reader, FLV_1_NEED_DES_LENGTH);
 
 	//处理好了，进行des 加密
-	TSDebug(PLUGIN_NAME, "process_check_des_body  tdes_key '%.*s'", 8,
-			tdes_key);
+	TSDebug(PLUGIN_NAME, "process_check_des_body  tdes_key '%.*s'", 8,tdes_key);
 	//从buf 中拷贝
 	des_encrypt(tdes_key, buf, FLV_1_NEED_DES_LENGTH);
-	for (i = 0; i < 136; i++) {
-		TSDebug(PLUGIN_NAME, "des to en %d", buf[i]);
-	}
+
 	TSIOBufferWrite(head_buffer, buf, FLV_1_DES_LENGTH);
 
 	TSfree((char *)buf);
@@ -874,6 +870,62 @@ static const char * get_amf_type_string(byte type) {
 	default:
 		return "Unknown type";
 	}
+}
+
+size_t FlvTag::get_flv_tag_size() {
+	flv_tag  tag;
+	return (sizeof(tag.type) + sizeof(tag.body_length) +sizeof(tag.timestamp) + sizeof(tag.timestamp_extended) + sizeof(tag.stream_id));
+}
+
+int FlvTag::flv_read_flv_tag(flv_tag * tag) {
+	IOBufferReaderCopy(tag_reader, &tag->type, sizeof(tag->type));
+	IOBufferReaderCopy(tag_reader, &tag->body_length, sizeof(tag->body_length));
+	IOBufferReaderCopy(tag_reader, &tag->timestamp, sizeof(tag->timestamp));
+	IOBufferReaderCopy(tag_reader, &tag->timestamp_extended, sizeof(tag->timestamp_extended));
+	IOBufferReaderCopy(tag_reader, &tag->stream_id, sizeof(tag->stream_id));
+
+    return 0;
+}
+
+size_t FlvTag::get_flv_header_size() {
+	flv_header  header;
+	return (sizeof(header.signature) + sizeof(header.version) +sizeof(header.flags) + sizeof(header.offset));
+}
+
+int FlvTag::flv_read_flv_header(flv_header * header) {
+
+	IOBufferReaderCopy(tag_reader, &header->signature, sizeof(header->signature));
+	IOBufferReaderCopy(tag_reader, &header->version, sizeof(header->version));
+	IOBufferReaderCopy(tag_reader, &header->flags, sizeof(header->flags));
+	IOBufferReaderCopy(tag_reader, &header->offset, sizeof(header->offset));
+
+    if (header->signature[0] != 'F'
+    || header->signature[1] != 'L'
+    || header->signature[2] != 'V') {
+        return -1;
+    }
+
+    return 0;
+}
+
+size_t FlvTag::get_drm_header_size() {
+	drm_header  header;
+	return (sizeof(header.signature) + sizeof(header.version) +sizeof(header.videoid_size));
+}
+
+int FlvTag::flv_read_drm_header(drm_header * header) {
+
+	IOBufferReaderCopy(tag_reader, &header->signature, sizeof(header->signature));
+	IOBufferReaderCopy(tag_reader, &header->version, sizeof(header->version));
+	IOBufferReaderCopy(tag_reader, &header->videoid_size, sizeof(header->videoid_size));
+
+    if (header->signature[0] != 'P'
+    || header->signature[1] != 'C'
+    || header->signature[2] != 'F') {
+        return -1;
+    }
+
+    return 0;
 }
 
 #endif /* __FLV_ENCRYPTION_CC__ */

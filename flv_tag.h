@@ -17,7 +17,6 @@
 
 #define PLUGIN_NAME "drm_video"
 
-#define VIDEO_SIGNATURE_LENGTH 3
 #define FLV_1_NEED_DES_LENGTH 128
 #define FLV_1_DES_LENGTH 136
 
@@ -35,11 +34,11 @@
 typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
 typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
 
-//typedef struct _drm_header_common {
-//	byte signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
-//	uint32_be version; //版本
-//	uint32_be videoid_size; //videoid 长度
-//} drm_header_common;
+typedef struct _drm_header {
+	byte signature[3]; //标志信息
+	uint32_be version; //版本
+	uint32_be videoid_size; //videoid 长度
+} drm_header;
 
 typedef struct __flv_header {
     byte            signature[3]; /* always "FLV" */
@@ -93,7 +92,7 @@ public:
 		new_flv_buffer = TSIOBufferCreate();
 		new_flv_reader = TSIOBufferReaderAlloc(new_flv_buffer);
 
-		current_handler = &FlvTag::process_header;
+		current_handler = &FlvTag::process_drm_header;
 	}
 
 	~FlvTag()
@@ -158,23 +157,27 @@ public:
         		reserved = NULL;
         }
 
-//        if (need_des_body) {
-//        		TSfree(need_des_body);
-//        		need_des_body = NULL;
-//        }
 
         tdes_key = NULL;
 	}
 
 	int process_tag(TSIOBufferReader reader, bool complete);
 	int64_t write_out(TSIOBuffer buffer);
+	size_t get_drm_header_size();
+	int flv_read_drm_header(drm_header * header);
 
-	int process_header();
-	int process_header_videoid();
-	int process_header_userid();
-	int process_header_reserved();
-	int process_decrypt_body();//解密
-	int process_initial_video_header();
+	size_t get_flv_header_size();
+	int flv_read_flv_header(flv_header * header);
+
+	size_t get_flv_tag_size();
+	int flv_read_flv_tag(flv_tag * tag);
+
+	int process_drm_header();
+	int process_drm_header_videoid();
+	int process_drm_header_userid();
+	int process_drm_header_reserved();
+	int process_decrypt_flv_body();//解密
+	int process_initial_flv_header();
 	int process_initial_body();
 	int process_medial_body();
 	int process_check_des_body();
@@ -199,11 +202,11 @@ public:
 	TSIOBufferReader new_flv_reader;
 
 	FTHandler current_handler;
-	int64_t tag_pos;
+	int64_t tag_pos; //已经消费了多少字节
 	int64_t dup_pos;
-	int64_t cl;
-	int64_t content_length;
-	int64_t drm_head_length;
+	int64_t cl; //文件总长度
+	int64_t content_length;  //从start 处开始的文件总长度
+	int64_t drm_head_length;  //drm head 的长度
 	int64_t video_head_length;
 
 	//----DRM header start
@@ -224,23 +227,20 @@ public:
 //	uint32_t section_size; //4
 //	uint32_t section_count; //4  count>0 && count<=5 加密片段个数
 //	uint64_t section_length; //8
-	uint64_t on_meta_data_size;
-
-
-//	uint32_t discard_size;
-//	uint32_t duration_time;
-
-	uint64_t duration_file_size;
-	double duration_time;  //丢弃的时间
-	uint64_t duration_video_size; //丢弃的video 大小
-	uint64_t duration_audio_size; //丢弃的audio 大小
 
 	uint32_t reserved_size; //4
 	u_char *reserved;
 	//----DRM header  end
 
-	uint64_t video_body_size;
-	int64_t start;
+	uint64_t on_meta_data_size;
+
+	uint64_t duration_file_size; //丢弃的字节大小
+	double duration_time;  //丢弃的时间
+	uint64_t duration_video_size; //丢弃的video 大小
+	uint64_t duration_audio_size; //丢弃的audio 大小
+
+	uint64_t video_body_size; //FLV header + script tag + 丢弃的(音频和视频)tag
+	int64_t start;   //请求flv 播放的起始字节数
 	int16_t video_type;
     u_char *tdes_key; //des key
 	bool key_found;
