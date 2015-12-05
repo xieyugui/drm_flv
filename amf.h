@@ -130,13 +130,13 @@ amf_data * amf_data_new(byte type);
 /* load AMF data from buffer */
 amf_data * amf_data_buffer_read(byte * buffer, size_t maxbytes);
 /* load AMF data from stream */
-amf_data * amf_data_file_read(void * user_data);
+amf_data * amf_data_file_read(FILE * stream);
 /* AMF data size */
 size_t     amf_data_size(const amf_data * data);
 /* write encoded AMF data into a buffer */
 size_t     amf_data_buffer_write(amf_data * data, byte * buffer, size_t maxbytes);
 /* write encoded AMF data into a stream */
-size_t     amf_data_file_write(const amf_data * data, void * user_data);
+size_t     amf_data_file_write(const amf_data * data,FILE * stream);
 /* get the type of AMF data */
 byte       amf_data_get_type(const amf_data * data);
 /* get the error code of AMF data */

@@ -239,13 +239,13 @@ static size_t file_write(const void * in_buffer, size_t size, void * user_data) 
 }
 
 /* load AMF data from a file stream */
-amf_data * amf_data_file_read(void * user_data) {
-    return amf_data_read(file_read, user_data);
+amf_data * amf_data_file_read(FILE * stream) {
+    return amf_data_read(file_read, stream);
 }
 
 /* write AMF data into a file stream */
-size_t amf_data_file_write(const amf_data * data, void * user_data) {
-    return amf_data_write(data, file_write, user_data);
+size_t amf_data_file_write(const amf_data * data, FILE * stream) {
+    return amf_data_write(data, file_write, stream);
 }
 
 /* read a number */

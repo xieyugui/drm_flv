@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ts/ts.h>
-#include <arpa/inet.h>
 #include "types.h"
 #include "amf.h"
 
@@ -36,11 +35,11 @@
 typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
 typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
 
-typedef struct {
-	u_char signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
-	uint32_t version; //版本
-	uint32_t videoid_size; //videoid 长度
-} drm_head_common;
+//typedef struct _drm_header_common {
+//	byte signature[VIDEO_SIGNATURE_LENGTH]; //标志信息
+//	uint32_be version; //版本
+//	uint32_be videoid_size; //videoid 长度
+//} drm_header_common;
 
 typedef struct __flv_header {
     byte            signature[3]; /* always "FLV" */
@@ -181,7 +180,7 @@ public:
 	int process_check_des_body();
 
 	int update_flv_meta_data(); //更新FLV on_meta_data信息
-	int flv_read_metadata(byte *stream,amf_data ** name, amf_data ** data);
+	int flv_read_metadata(byte *stream,amf_data ** name, amf_data ** data, size_t maxbytes);
 
 
 
