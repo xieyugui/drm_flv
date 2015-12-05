@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <ts/ts.h>
 
 #include "types.h"
 
@@ -129,13 +130,13 @@ amf_data * amf_data_new(byte type);
 /* load AMF data from buffer */
 amf_data * amf_data_buffer_read(byte * buffer, size_t maxbytes);
 /* load AMF data from stream */
-amf_data * amf_data_file_read(FILE * stream);
+amf_data * amf_data_file_read(void * user_data);
 /* AMF data size */
 size_t     amf_data_size(const amf_data * data);
 /* write encoded AMF data into a buffer */
 size_t     amf_data_buffer_write(amf_data * data, byte * buffer, size_t maxbytes);
 /* write encoded AMF data into a stream */
-size_t     amf_data_file_write(const amf_data * data, FILE * stream);
+size_t     amf_data_file_write(const amf_data * data, void * user_data);
 /* get the type of AMF data */
 byte       amf_data_get_type(const amf_data * data);
 /* get the error code of AMF data */
@@ -145,7 +146,7 @@ amf_data * amf_data_clone(const amf_data * data);
 /* release the memory of AMF data */
 void       amf_data_free(amf_data * data);
 /* dump AMF data into a stream as text */
-void       amf_data_dump(FILE * stream, const amf_data * data, int indent_level);
+//void       amf_data_dump(TSIOBufferReader readerp, const amf_data * data, int indent_level);
 
 /* return a null AMF object with the specified error code attached to it */
 amf_data * amf_data_error(byte error_code);
@@ -220,6 +221,7 @@ amf_data * amf_date_new(number64 milliseconds, sint16 timezone);
 number64   amf_date_get_milliseconds(const amf_data * data);
 sint16     amf_date_get_timezone(const amf_data * data);
 time_t     amf_date_to_time_t(const amf_data * data);
+
 
 #ifdef __cplusplus
 }

@@ -13,6 +13,8 @@
 #include <string.h>
 #include <ts/ts.h>
 #include <arpa/inet.h>
+#include "types.h"
+#include "amf.h"
 
 #define PLUGIN_NAME "drm_video"
 
@@ -26,9 +28,10 @@
 #define FLV_UI8(x) (int)((x))
 
 //TAG 类型 8:音频 9:视频 18:脚本 其他:保留
-#define FLV_AUDIODATA   8
-#define FLV_VIDEODATA   9
-#define FLV_SCRIPTDATAOBJECT    18
+/* FLV tag */
+#define FLV_TAG_TYPE_AUDIO  ((uint8)0x08)
+#define FLV_TAG_TYPE_VIDEO  ((uint8)0x09)
+#define FLV_TAG_TYPE_META   ((uint8)0x12)
 
 typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
 typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
@@ -39,19 +42,32 @@ typedef struct {
 	uint32_t videoid_size; //videoid 长度
 } drm_head_common;
 
+typedef struct __flv_header {
+    byte            signature[3]; /* always "FLV" */
+    uint8           version; /* should be 1 */
+    uint8_bitmask   flags;
+    uint32_be       offset; /* always 9 */
+} flv_header;
 
-typedef struct {
-        unsigned char type; //1 bytes TAG 类型 8:音频 9:视频 18:脚本 其他:保留
-        unsigned char datasize[3];// 3 bytes 数据长度   在数据区的长度
-        unsigned char timestamp[3];// 3 bytes 时间戳  整数，单位是毫秒。对于脚本型的tag总是0
-        unsigned char timestamp_ex;//时间戳扩展	1 bytes	将时间戳扩展为4bytes，代表高8位。很少用到
-        unsigned char streamid[3];// StreamsID	3 bytes	总是0
-} FLVTag_t;// TAG 头信息
+
+typedef struct __flv_tag {
+    uint8       type; //1 bytes TAG 类型 8:音频 9:视频 18:脚本 其他:保留
+    uint24_be   body_length; /* in bytes, total tag size minus 11 */
+    uint24_be   timestamp; /* milli-seconds */
+    uint8       timestamp_extended; /* timestamp extension */
+    uint24_be   stream_id; /* reserved, must be "\0\0\0" */
+    /* body comes next */
+} flv_tag;
 
 union av_intfloat64 {
     uint64_t i;
     double f;
 };
+
+#define flv_tag_get_body_length(tag)    (uint24_be_to_uint32((tag).body_length))
+#define flv_tag_get_timestamp(tag) \
+    (uint24_be_to_uint32((tag).timestamp) + ((tag).timestamp_extended << 24))
+
 
 class FlvTag;
 typedef int (FlvTag::*FTHandler) ();
@@ -60,9 +76,10 @@ class FlvTag
 {
 public:
 	FlvTag() : tag_buffer(NULL), tag_reader(NULL), drm_head_length(0),video_body_size(0),version(0),videoid_size(0),
-		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),discard_size(0),on_meta_data_size(0),
-		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),duration_time(0),
-		videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL),dup_reader(NULL),body_buffer(NULL),body_reader(NULL)
+		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),duration_file_size(0),on_meta_data_size(0),
+		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),duration_time(0),duration_video_size(0),duration_audio_size(0),
+		videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL),dup_reader(NULL),flv_buffer(NULL),flv_reader(NULL),
+		new_flv_buffer(NULL),new_flv_reader(NULL)
 	{
 		tag_buffer = TSIOBufferCreate();
 		tag_reader = TSIOBufferReaderAlloc(tag_buffer);
@@ -71,8 +88,11 @@ public:
 		head_buffer = TSIOBufferCreate();
 		head_reader = TSIOBufferReaderAlloc(head_buffer);
 
-		body_buffer = TSIOBufferCreate();
-		body_reader = TSIOBufferReaderAlloc(body_buffer);
+		flv_buffer = TSIOBufferCreate();
+		flv_reader = TSIOBufferReaderAlloc(flv_buffer);
+
+		new_flv_buffer = TSIOBufferCreate();
+		new_flv_reader = TSIOBufferReaderAlloc(new_flv_buffer);
 
 		current_handler = &FlvTag::process_header;
 	}
@@ -104,14 +124,24 @@ public:
             head_buffer = NULL;
         }
 
-        if (body_reader) {
-            TSIOBufferReaderFree(body_reader);
-            body_reader = NULL;
+        if (flv_reader) {
+            TSIOBufferReaderFree(flv_reader);
+            flv_reader = NULL;
         }
 
-        if (body_buffer) {
-            TSIOBufferDestroy(body_buffer);
-            body_buffer = NULL;
+        if (flv_buffer) {
+            TSIOBufferDestroy(flv_buffer);
+            flv_buffer = NULL;
+        }
+
+        if (new_flv_reader) {
+            TSIOBufferReaderFree(new_flv_reader);
+            new_flv_reader = NULL;
+        }
+
+        if (new_flv_buffer) {
+            TSIOBufferDestroy(new_flv_buffer);
+            new_flv_buffer = NULL;
         }
 
         if (videoid) {
@@ -150,6 +180,10 @@ public:
 	int process_medial_body();
 	int process_check_des_body();
 
+	int update_flv_meta_data(); //更新FLV on_meta_data信息
+	int flv_read_metadata(byte *stream,amf_data ** name, amf_data ** data);
+
+
 
 public:
 	TSIOBuffer tag_buffer;
@@ -159,8 +193,11 @@ public:
 	TSIOBuffer head_buffer;
 	TSIOBufferReader head_reader;
 
-	TSIOBuffer body_buffer;
-	TSIOBufferReader body_reader;
+	TSIOBuffer flv_buffer;
+	TSIOBufferReader flv_reader;
+
+	TSIOBuffer new_flv_buffer;
+	TSIOBufferReader new_flv_reader;
 
 	FTHandler current_handler;
 	int64_t tag_pos;
@@ -194,8 +231,10 @@ public:
 //	uint32_t discard_size;
 //	uint32_t duration_time;
 
-	uint64_t discard_size;
-	double duration_time;
+	uint64_t duration_file_size;
+	double duration_time;  //丢弃的时间
+	uint64_t duration_video_size; //丢弃的video 大小
+	uint64_t duration_audio_size; //丢弃的audio 大小
 
 	uint32_t reserved_size; //4
 	u_char *reserved;

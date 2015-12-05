@@ -239,13 +239,13 @@ static size_t file_write(const void * in_buffer, size_t size, void * user_data) 
 }
 
 /* load AMF data from a file stream */
-amf_data * amf_data_file_read(FILE * stream) {
-    return amf_data_read(file_read, stream);
+amf_data * amf_data_file_read(void * user_data) {
+    return amf_data_read(file_read, user_data);
 }
 
 /* write AMF data into a file stream */
-size_t amf_data_file_write(const amf_data * data, FILE * stream) {
-    return amf_data_write(data, file_write, stream);
+size_t amf_data_file_write(const amf_data * data, void * user_data) {
+    return amf_data_write(data, file_write, user_data);
 }
 
 /* read a number */
@@ -781,81 +781,81 @@ void amf_data_free(amf_data * data) {
     }
 }
 
-/* dump AMF data into a stream as text */
-void amf_data_dump(FILE * stream, const amf_data * data, int indent_level) {
-    if (data != NULL) {
-        amf_node * node;
-        time_t time;
-        struct tm * t;
-        char datestr[128];
-        switch (data->type) {
-            case AMF_TYPE_NUMBER:
-                fprintf(stream, "%.12g", data->number_data);
-                break;
-            case AMF_TYPE_BOOLEAN:
-                fprintf(stream, "%s", (data->boolean_data) ? "true" : "false");
-                break;
-            case AMF_TYPE_STRING:
-                fprintf(stream, "\'%.*s\'", data->string_data.size, data->string_data.mbstr);
-                break;
-            case AMF_TYPE_OBJECT:
-                node = amf_object_first(data);
-                fprintf(stream, "{\n");
-                while (node != NULL) {
-                    fprintf(stream, "%*s", (indent_level+1)*4, "");
-                    amf_data_dump(stream, amf_object_get_name(node), indent_level+1);
-                    fprintf(stream, ": ");
-                    amf_data_dump(stream, amf_object_get_data(node), indent_level+1);
-                    node = amf_object_next(node);
-                    fprintf(stream, "\n");
-                }
-                fprintf(stream, "%*s", indent_level*4 + 1, "}");
-                break;
-            case AMF_TYPE_NULL:
-                fprintf(stream, "null");
-                break;
-            case AMF_TYPE_UNDEFINED:
-                fprintf(stream, "undefined");
-                break;
-            /*case AMF_TYPE_REFERENCE:*/
-            case AMF_TYPE_ASSOCIATIVE_ARRAY:
-                node = amf_associative_array_first(data);
-                fprintf(stream, "{\n");
-                while (node != NULL) {
-                    fprintf(stream, "%*s", (indent_level+1)*4, "");
-                    amf_data_dump(stream, amf_associative_array_get_name(node), indent_level+1);
-                    fprintf(stream, " => ");
-                    amf_data_dump(stream, amf_associative_array_get_data(node), indent_level+1);
-                    node = amf_associative_array_next(node);
-                    fprintf(stream, "\n");
-                }
-                fprintf(stream, "%*s", indent_level*4 + 1, "}");
-                break;
-            case AMF_TYPE_ARRAY:
-                node = amf_array_first(data);
-                fprintf(stream, "[\n");
-                while (node != NULL) {
-                    fprintf(stream, "%*s", (indent_level+1)*4, "");
-                    amf_data_dump(stream, node->data, indent_level+1);
-                    node = amf_array_next(node);
-                    fprintf(stream, "\n");
-                }
-                fprintf(stream, "%*s", indent_level*4 + 1, "]");
-                break;
-            case AMF_TYPE_DATE:
-                time = amf_date_to_time_t(data);
-                tzset();
-                t = localtime(&time);
-                strftime(datestr, sizeof(datestr), "%a, %d %b %Y %H:%M:%S %z", t);
-                fprintf(stream, "%s", datestr);
-                break;
-            /*case AMF_TYPE_SIMPLEOBJECT:*/
-            case AMF_TYPE_XML: break;
-            case AMF_TYPE_CLASS: break;
-            default: break;
-        }
-    }
-}
+///* dump AMF data into a stream as text */
+//void amf_data_dump(FILE * stream, const amf_data * data, int indent_level) {
+//    if (data != NULL) {
+//        amf_node * node;
+//        time_t time;
+//        struct tm * t;
+//        char datestr[128];
+//        switch (data->type) {
+//            case AMF_TYPE_NUMBER:
+//                fprintf(stream, "%.12g", data->number_data);
+//                break;
+//            case AMF_TYPE_BOOLEAN:
+//                fprintf(stream, "%s", (data->boolean_data) ? "true" : "false");
+//                break;
+//            case AMF_TYPE_STRING:
+//                fprintf(stream, "\'%.*s\'", data->string_data.size, data->string_data.mbstr);
+//                break;
+//            case AMF_TYPE_OBJECT:
+//                node = amf_object_first(data);
+//                fprintf(stream, "{\n");
+//                while (node != NULL) {
+//                    fprintf(stream, "%*s", (indent_level+1)*4, "");
+//                    amf_data_dump(stream, amf_object_get_name(node), indent_level+1);
+//                    fprintf(stream, ": ");
+//                    amf_data_dump(stream, amf_object_get_data(node), indent_level+1);
+//                    node = amf_object_next(node);
+//                    fprintf(stream, "\n");
+//                }
+//                fprintf(stream, "%*s", indent_level*4 + 1, "}");
+//                break;
+//            case AMF_TYPE_NULL:
+//                fprintf(stream, "null");
+//                break;
+//            case AMF_TYPE_UNDEFINED:
+//                fprintf(stream, "undefined");
+//                break;
+//            /*case AMF_TYPE_REFERENCE:*/
+//            case AMF_TYPE_ASSOCIATIVE_ARRAY:
+//                node = amf_associative_array_first(data);
+//                fprintf(stream, "{\n");
+//                while (node != NULL) {
+//                    fprintf(stream, "%*s", (indent_level+1)*4, "");
+//                    amf_data_dump(stream, amf_associative_array_get_name(node), indent_level+1);
+//                    fprintf(stream, " => ");
+//                    amf_data_dump(stream, amf_associative_array_get_data(node), indent_level+1);
+//                    node = amf_associative_array_next(node);
+//                    fprintf(stream, "\n");
+//                }
+//                fprintf(stream, "%*s", indent_level*4 + 1, "}");
+//                break;
+//            case AMF_TYPE_ARRAY:
+//                node = amf_array_first(data);
+//                fprintf(stream, "[\n");
+//                while (node != NULL) {
+//                    fprintf(stream, "%*s", (indent_level+1)*4, "");
+//                    amf_data_dump(stream, node->data, indent_level+1);
+//                    node = amf_array_next(node);
+//                    fprintf(stream, "\n");
+//                }
+//                fprintf(stream, "%*s", indent_level*4 + 1, "]");
+//                break;
+//            case AMF_TYPE_DATE:
+//                time = amf_date_to_time_t(data);
+//                tzset();
+//                t = localtime(&time);
+//                strftime(datestr, sizeof(datestr), "%a, %d %b %Y %H:%M:%S %z", t);
+//                fprintf(stream, "%s", datestr);
+//                break;
+//            /*case AMF_TYPE_SIMPLEOBJECT:*/
+//            case AMF_TYPE_XML: break;
+//            case AMF_TYPE_CLASS: break;
+//            default: break;
+//        }
+//    }
+//}
 
 /* return a null AMF object with the specified error code attached to it */
 amf_data * amf_data_error(byte error_code) {
@@ -1154,3 +1154,4 @@ sint16 amf_date_get_timezone(const amf_data * data) {
 time_t amf_date_to_time_t(const amf_data * data) {
     return (time_t)((data != NULL) ? data->date_data.milliseconds / 1000 : 0);
 }
+
