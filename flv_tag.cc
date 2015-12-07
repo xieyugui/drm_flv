@@ -404,39 +404,38 @@ int FlvTag::update_flv_meta_data() {
 	amf_data * name;
 	amf_data * data;
 	amf_data * on_metadata, *on_metadata_name;
+	byte *buf;
+	uint32 prev_tag_size;
+	size_t on_medata_size;
 	name = NULL;
 	data = NULL;
 	on_metadata = NULL;
 	on_metadata_name = NULL;
+	on_medata_size = 0;
 
 	TSDebug(PLUGIN_NAME, "update_flv_meta_data flv_tag_size = %d",flv_tag_size);
-	IOBufferReaderCopy(flv_reader, &tag, flv_tag_size);
+
+	flv_read_flv_tag(flv_reader, &tag);
+//	IOBufferReaderCopy(flv_reader, &tag, flv_tag_size);
 	TSIOBufferReaderConsume(flv_reader, flv_tag_size);
 
 	body_length = flv_tag_get_body_length(tag);
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data b = %d\n",body_length);
-	byte *buf;
-	uint32 prev_tag_size;
 
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data c");
+
 	buf = (byte *)TSmalloc(sizeof(byte) * body_length);
 	bzero(buf, sizeof(buf));
 	IOBufferReaderCopy(flv_reader, buf, body_length);
 	TSIOBufferReaderConsume(flv_reader, body_length);
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data d");
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data %d %d", buf[2], buf[100]);
 	flv_read_metadata(buf, &name, &data,body_length);
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data d11");
-	//	flv_read_prev_tag_size(pFile, &prev_tag_size);
 	IOBufferReaderCopy(flv_reader, &prev_tag_size, sizeof(uint32_be));
 	TSIOBufferReaderConsume(flv_reader, sizeof(uint32_be));
 	prev_tag_size = swap_uint32(prev_tag_size);
 	TSDebug(PLUGIN_NAME,"unexpected end of file in previous tag size%d\n",prev_tag_size);
-	TSDebug(PLUGIN_NAME, "update_flv_meta_data e");
 	/* onMetaData checking */
 	if (!strcmp((char*) amf_string_get_bytes(name),"onMetaData")) {
+		on_medata_size = amf_data_size(data);
 		TSDebug(PLUGIN_NAME,"onMetaName= %d\n",amf_data_size(name));
-		TSDebug(PLUGIN_NAME,"onMetaData = %d\n",amf_data_size(data));
+		TSDebug(PLUGIN_NAME,"onMetaData = %d\n",on_medata_size);
 		on_metadata = amf_data_clone(data);
 		on_metadata_name = amf_data_clone(name);
 		/* check onMetadata type */
@@ -463,6 +462,7 @@ int FlvTag::update_flv_meta_data() {
 		byte * name;
 		amf_data * data;
 		byte type;
+		double data_value;
 
 		name = amf_string_get_bytes(amf_associative_array_get_name(n));
 		data = amf_associative_array_get_data(n);
@@ -477,9 +477,9 @@ int FlvTag::update_flv_meta_data() {
 				file_duration = amf_number_get_value(data);
 				if(duration_time > file_duration)
 					goto end;
-				double xie = int2double(file_duration) - duration_time;
-				TSDebug(PLUGIN_NAME,"duration should got %lf %lf\n", xie, int2double(file_duration));
-				amf_number_set_value(data,double2int(xie)); //修改总时间
+				data_value = int2double(file_duration) - duration_time;
+				TSDebug(PLUGIN_NAME,"duration should got %lf %lf\n", data_value, int2double(file_duration));
+				amf_number_set_value(data,double2int(data_value)); //修改总时间
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for duration: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -494,9 +494,9 @@ int FlvTag::update_flv_meta_data() {
 				file_lasttimestamp = amf_number_get_value(data);
 				if(duration_time > file_lasttimestamp)
 					goto end;
-				double xie = int2double(file_lasttimestamp) - duration_time;
-				TSDebug(PLUGIN_NAME,"lasttimestamp should be %lf %lf\n", xie,int2double(file_lasttimestamp));
-				amf_number_set_value(data,double2int(xie)); //修改总时间
+				data_value = int2double(file_lasttimestamp) - duration_time;
+				TSDebug(PLUGIN_NAME,"lasttimestamp should be %lf %lf\n", data_value,int2double(file_lasttimestamp));
+				amf_number_set_value(data,double2int(data_value)); //修改总时间
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for lasttimestamp: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -511,8 +511,9 @@ int FlvTag::update_flv_meta_data() {
 				file_lastkeyframetimestamp = amf_number_get_value(data);
 				if(duration_time > file_lastkeyframetimestamp)
 					goto end;
-				double xie = int2double(file_lastkeyframetimestamp) - duration_time;;
-				TSDebug(PLUGIN_NAME,"lastkeyframetimestamp should be %lf %lf\n", xie,int2double(file_lastkeyframetimestamp));
+				data_value = int2double(file_lastkeyframetimestamp) - duration_time;;
+				TSDebug(PLUGIN_NAME,"lastkeyframetimestamp should be %lf %lf\n", data_value,int2double(file_lastkeyframetimestamp));
+				amf_number_set_value(data,double2int(data_value));
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for lastkeyframetimestamp: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -526,8 +527,9 @@ int FlvTag::update_flv_meta_data() {
 				number64 file_filesize;
 
 				file_filesize = amf_number_get_value(data);
-				double xie = int2double(file_filesize) - duration_file_size ;
-				TSDebug(PLUGIN_NAME,"filesize should be got %lf %lf\n", xie,int2double(file_filesize));
+				data_value = int2double(file_filesize) - duration_file_size;  //此处有bug ，因为在删除onmetadata关键帧的时候, 大小会再次变化，还需要再次修改
+				TSDebug(PLUGIN_NAME,"filesize should be got %lf %lf\n", data_value,int2double(file_filesize));
+				amf_number_set_value(data,double2int(data_value));
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for filesize: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -540,8 +542,9 @@ int FlvTag::update_flv_meta_data() {
 			if (type == AMF_TYPE_NUMBER) {
 				number64 file_videosize;
 				file_videosize = amf_number_get_value(data);
-				double xie = int2double(file_videosize) - duration_video_size;
-				TSDebug(PLUGIN_NAME,"videosize should be got %lf %lf\n", xie,int2double(file_videosize));
+				data_value = int2double(file_videosize) - duration_video_size;
+				TSDebug(PLUGIN_NAME,"videosize should be got %lf %lf\n", data_value,int2double(file_videosize));
+				amf_number_set_value(data,double2int(data_value));
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for videosize: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -554,8 +557,9 @@ int FlvTag::update_flv_meta_data() {
 			if (type == AMF_TYPE_NUMBER) {
 				number64 file_audiosize;
 				file_audiosize = amf_number_get_value(data);
-				double xie = int2double(file_audiosize) - duration_audio_size;
-				TSDebug(PLUGIN_NAME,"audiosize should be got %lf %lf\n", xie,int2double(file_audiosize));
+				data_value = int2double(file_audiosize) - duration_audio_size;
+				TSDebug(PLUGIN_NAME,"audiosize should be got %lf %lf\n", data_value,int2double(file_audiosize));
+				amf_number_set_value(data,double2int(data_value));
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for audiosize: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -568,8 +572,9 @@ int FlvTag::update_flv_meta_data() {
 			if (type == AMF_TYPE_NUMBER) {
 				number64 file_datasize;
 				file_datasize = amf_number_get_value(data);
-				double xie = int2double(file_datasize) - duration_video_size - duration_audio_size;
-				TSDebug(PLUGIN_NAME,"datasize should be got %lf %lf\n", xie,int2double(file_datasize));
+				data_value = int2double(file_datasize) - duration_video_size - duration_audio_size;
+				TSDebug(PLUGIN_NAME,"datasize should be got %lf %lf\n", data_value,int2double(file_datasize));
+				amf_number_set_value(data,double2int(data_value));
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for datasize: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
@@ -660,16 +665,13 @@ int FlvTag::update_flv_meta_data() {
 							}
 
 							/* position */
-							if (amf_data_get_type(
-									amf_array_get(
-											ff_node)) != AMF_TYPE_NUMBER) {
+							if (amf_data_get_type(amf_array_get(ff_node)) != AMF_TYPE_NUMBER) {
 								TSDebug(PLUGIN_NAME,
 										"!= AMF_TYPE_NUMBER invalid type for file position: expected %s, got %s\n",
 										get_amf_type_string(AMF_TYPE_NUMBER),
 										get_amf_type_string(type));
 							} else {
-								f_position = amf_number_get_value(
-										amf_array_get(ff_node));
+								f_position = amf_number_get_value(amf_array_get(ff_node));
 								double df_position = int2double(f_position);
 								TSDebug(PLUGIN_NAME,
 										"invalid keyframe file position: expected  got %lf\n",
@@ -696,9 +698,6 @@ int FlvTag::update_flv_meta_data() {
 							ft_node = amf_array_next(ft_node);
 							ff_node = amf_array_next(ff_node);
 						}
-
-						TSDebug(PLUGIN_NAME,"------file_times size = %d\n",amf_array_size(file_times));
-						TSDebug(PLUGIN_NAME,"------file_times byte = %d\n",amf_data_size(file_times));
 					}
 				}
 			} else {
@@ -709,20 +708,38 @@ int FlvTag::update_flv_meta_data() {
 		}//end keyframes
 	}// end for
 
+	//on_medata_size - amf_data_size(on_metadata);  //等于丢弃了多少关键帧
+	for (n = amf_associative_array_first(on_metadata); n != NULL; n =
+			amf_associative_array_next(n)) {
+		byte * name;
+		amf_data * data;
+		byte type;
+
+		name = amf_string_get_bytes(amf_associative_array_get_name(n));
+		data = amf_associative_array_get_data(n);
+		type = amf_data_get_type(data);
+		/* filesize: (number) */
+		if (!strcmp((char*) name, "filesize")) {
+			if (type == AMF_TYPE_NUMBER) {
+				number64 file_filesize;
+
+				file_filesize = amf_number_get_value(data);
+				double data_value = int2double(file_filesize) -  (on_medata_size - amf_data_size(on_metadata));  //此处有bug ，因为在删除onmetadata关键帧的时候, 大小会再次变化，还需要再次修改
+				TSDebug(PLUGIN_NAME,"filesize should be got %lf %lf\n", data_value,int2double(file_filesize));
+				amf_number_set_value(data,double2int(data_value));
+			} else {
+				TSDebug(PLUGIN_NAME,"invalid type for filesize: expected %s, got %s\n",
+						get_amf_type_string(AMF_TYPE_NUMBER),
+						get_amf_type_string(type));
+			}
+		}
+
+	}
+
 end:
 	uint32 meta_data_length = amf_data_size(on_metadata_name) + amf_data_size(on_metadata);
 	prev_tag_size = flv_tag_size + meta_data_length;
-    /* first "previous tag size" */
-//    size = swap_uint32(0);
-//    if (fwrite(&size, sizeof(uint32_be), 1, flv_out) != 1) {
-//        return ERROR_WRITE;
-//    }
-	//修改flv_tag 里的长度
-//    omft.type = FLV_TAG_TYPE_META;
-//    omft.body_length = uint32_to_uint24_be(on_metadata_name_size + on_metadata_size);
-//    flv_tag_set_timestamp(&omft, 0);
-//    omft.stream_id = uint32_to_uint24_be(0);
-//	TSIOBufferCopy(new_flv_buffer, flv_reader, sizeof(uint8), 0);
+
 	tag.body_length = uint32_to_uint24_be(meta_data_length);
 	IOBufferReaderCopy(new_flv_reader, &tag, flv_tag_size);
 
@@ -733,6 +750,7 @@ end:
 	byte *on_medata_data_b = (byte *)TSmalloc(sizeof(byte) * amf_data_size(on_metadata));
 	amf_data_buffer_write(on_metadata,on_medata_data_b, amf_data_size(on_metadata));
 	IOBufferReaderCopy(new_flv_reader, on_medata_data_b , amf_data_size(on_metadata));
+	/* first "previous tag size" */
 	uint32_be size = swap_uint32(prev_tag_size);
 	IOBufferReaderCopy(new_flv_reader, &size, sizeof(uint32_be));
 
