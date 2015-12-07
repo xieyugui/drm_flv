@@ -19,6 +19,11 @@
 
 #define FLV_1_NEED_DES_LENGTH 128
 #define FLV_1_DES_LENGTH 136
+#define FLV_1_DES_SECTION_COUNT 1
+
+#define FLV_3_NEED_DES_LENGTH 8176
+#define FLV_3_DES_LENGTH 8184
+#define FLV_3_DES_SECTION_COUNT 5
 
 #define FLV_UI32(x) (int)(((x[0]) << 24) + ((x[1]) << 16) + ((x[2]) << 8) + (x[3])) //将字符串转为整数
 #define FLV_UI24(x) (int)(((x[0]) << 16) + ((x[1]) << 8) + (x[2]))
@@ -73,15 +78,18 @@ typedef int (FlvTag::*FTHandler) ();
 class FlvTag
 {
 public:
-	FlvTag() : tag_buffer(NULL), tag_reader(NULL), drm_head_length(0),video_body_size(0),version(0),videoid_size(0),
-		head_buffer(NULL), head_reader(NULL), tag_pos(0), dup_pos(0), cl(0), tdes_key(NULL),duration_file_size(0),on_meta_data_size(0),
-		content_length(0), start(0), key_found(false), video_type(0) ,video_head_length(0),duration_time(0),duration_video_size(0),duration_audio_size(0),
-		videoid(NULL), userid_size(0), userid(NULL), reserved_size(0), reserved(NULL),dup_reader(NULL),flv_buffer(NULL),flv_reader(NULL),
-		new_flv_buffer(NULL),new_flv_reader(NULL)
+	FlvTag() : tag_buffer(NULL), tag_reader(NULL),des_buffer(NULL), des_reader(NULL),head_buffer(NULL), head_reader(NULL),
+		flv_buffer(NULL),flv_reader(NULL),new_flv_buffer(NULL),new_flv_reader(NULL),
+		tag_pos(0),  cl(0),content_length(0), drm_head_length(0),version(0),videoid_size(0),videoid(NULL), userid_size(0), userid(NULL),reserved_size(0), reserved(NULL),
+		 flv_need_des_length(0),flv_des_length(0),flv_des_section_count(0),on_meta_data_size(0),
+		 duration_file_size(0) ,duration_time(0),duration_video_size(0),duration_audio_size(0),video_body_size(0),start(0), video_type(0), tdes_key(NULL)
 	{
+
 		tag_buffer = TSIOBufferCreate();
 		tag_reader = TSIOBufferReaderAlloc(tag_buffer);
-		dup_reader = TSIOBufferReaderAlloc(tag_buffer);
+
+		des_buffer = TSIOBufferCreate();
+		des_reader = TSIOBufferReaderAlloc(des_buffer);
 
 		head_buffer = TSIOBufferCreate();
 		head_reader = TSIOBufferReaderAlloc(head_buffer);
@@ -102,14 +110,18 @@ public:
 			tag_reader = NULL;
 		}
 
-        if (dup_reader) {
-            TSIOBufferReaderFree(dup_reader);
-            dup_reader = NULL;
-        }
-
 		if (tag_buffer) {
 			TSIOBufferDestroy(tag_buffer);
 			tag_buffer = NULL;
+		}
+
+        if (des_reader) {
+            TSIOBufferReaderFree(des_reader);
+            des_reader = NULL;
+        }
+		if (des_buffer) {
+			TSIOBufferDestroy(des_buffer);
+			des_buffer = NULL;
 		}
 
         if (head_reader) {
@@ -190,7 +202,9 @@ public:
 public:
 	TSIOBuffer tag_buffer;
 	TSIOBufferReader tag_reader;
-	TSIOBufferReader    dup_reader;
+
+	TSIOBuffer des_buffer;
+	TSIOBufferReader    des_reader;
 
 	TSIOBuffer head_buffer;
 	TSIOBufferReader head_reader;
@@ -203,11 +217,9 @@ public:
 
 	FTHandler current_handler;
 	int64_t tag_pos; //已经消费了多少字节
-	int64_t dup_pos;
 	int64_t cl; //文件总长度
 	int64_t content_length;  //从start 处开始的文件总长度
 	int64_t drm_head_length;  //drm head 的长度
-	int64_t video_head_length;
 
 	//----DRM header start
 	//char signature[3]; 标志位
@@ -219,18 +231,13 @@ public:
 	uint32_t userid_size; //4
 	u_char *userid;  //用户 id 标签
 
-//	uint32_t range_size;    //4
-//	uint64_t range_start;//同访问 mp4 时 http response header 的 Content-Range 字段的 start  8
-//	uint64_t range_end;//同访问 mp4 时 http response header 的 Content-Range 字段的 end  8
-//	uint64_t original_size; //mp4 文件字节数  8
-//
-//	uint32_t section_size; //4
-//	uint32_t section_count; //4  count>0 && count<=5 加密片段个数
-//	uint64_t section_length; //8
-
 	uint32_t reserved_size; //4
 	u_char *reserved;
 	//----DRM header  end
+
+	size_t flv_need_des_length; //需要des加密的字符长度
+	size_t flv_des_length; //加密之后的字符长度
+	size_t flv_des_section_count; // 需要加密的一共有几段
 
 	uint64_t on_meta_data_size;
 
@@ -243,7 +250,6 @@ public:
 	int64_t start;   //请求flv 播放的起始字节数
 	int16_t video_type;
     u_char *tdes_key; //des key
-	bool key_found;
 };
 
 #endif /* __FLV_TAG_H__ */

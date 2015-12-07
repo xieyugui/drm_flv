@@ -88,7 +88,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 
 		val = ts_arg(query, query_len, "start", sizeof("start") - 1, &val_len);
 		if (val != NULL) {
-		  ret = sscanf(val, "%u", &start);
+		  ret = sscanf(val, "%ld", &start);
 		  if (ret != 1)
 			start = 0;
 		}
@@ -134,7 +134,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 	}
 
 	videoc = new VideoContext(video_type,start);
-	TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%d, type=%d", start, video_type);
+	TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%ld, type=%d", start, video_type);
 
 	contp = TSContCreate((TSEventFunc) drmvideo_handler, NULL);
 	TSContDataSet(contp, videoc);
@@ -206,7 +206,6 @@ video_read_response(VideoContext *videoc, TSHttpTxn txnp)
     if (n <= 0)
         goto release;
 
-    TSDebug(PLUGIN_NAME, " %s response content length %d", __FUNCTION__, n);
     videoc->cl = n;
     video_add_transform(videoc, txnp);
 
@@ -255,7 +254,6 @@ video_cache_lookup_complete(VideoContext *videoc, TSHttpTxn txnp)
 	if (n <= 0)
 	  goto release;
 
-	TSDebug(PLUGIN_NAME, " %s response content length %d", __FUNCTION__, n);
 	videoc->cl = n;
 	video_add_transform(videoc, txnp);
 
@@ -339,7 +337,6 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 	input_reader = TSVIOReaderGet(input_vio);
 
 	if (!TSVIOBufferGet(input_vio)) {
-		TSDebug(PLUGIN_NAME, "TSVIOBufferGet input_vio no data");
 		if (vtc->output.vio) {
 			TSVIONBytesSet(vtc->output.vio, vtc->total);
 			TSVIOReenable(vtc->output.vio);
@@ -348,27 +345,20 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 	}
 
 	avail = TSIOBufferReaderAvail(input_reader);
-	TSDebug(PLUGIN_NAME, "TSIOBufferReaderAvail  avail=%d",avail);
 	upstream_done = TSVIONDoneGet(input_vio);
-	TSDebug(PLUGIN_NAME, "TSVIONDoneGet  upstream_done=%d",upstream_done);
 
 	TSIOBufferCopy(vtc->res_buffer, input_reader, avail, 0);
 	TSIOBufferReaderConsume(input_reader, avail);
 	TSVIONDoneSet(input_vio, upstream_done + avail);
-	TSDebug(PLUGIN_NAME, "TSVIONDoneSet  upstream_done=%d",upstream_done + avail);
 
 	toread = TSVIONTodoGet(input_vio);
-	TSDebug(PLUGIN_NAME, "TSVIONTodoGet  toread=%d", toread);
 	write_down = false;
 
 	if (!vtc->parse_over) {//有没有开始解析
-		TSDebug(PLUGIN_NAME, "first parse over");
 		ret = ftag->process_tag(vtc->res_reader, toread <= 0);
 		if (ret == 0) { //为0 说明还没解析好
-			TSDebug(PLUGIN_NAME, "ret = 0 goto trans");
 			goto trans;
 		}
-		TSDebug(PLUGIN_NAME, "ret = %d",ret);
 		vtc->parse_over = true;
 
 		vtc->output.buffer = TSIOBufferCreate();
@@ -378,7 +368,6 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 		tag_avail = ftag->write_out(vtc->output.buffer);
 		if (tag_avail > 0) {//专门来处理头的数据
 			vtc->total += tag_avail;
-			TSDebug(PLUGIN_NAME, "head length = %d total = %d",tag_avail,vtc->total);
 			write_down = true;
 		}
 	}
@@ -388,10 +377,8 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 		TSIOBufferCopy(vtc->output.buffer, vtc->res_reader, avail, 0);
 		TSIOBufferReaderConsume(vtc->res_reader, avail);
 		vtc->total += avail;
-		TSDebug(PLUGIN_NAME, "avail > 0  = %d total = %d",avail,vtc->total);
 		write_down = true;
 	}
-	TSDebug(PLUGIN_NAME, "TSVIONTodoGet  toread=%d", toread);
 
 trans:
 	if (write_down)
@@ -401,7 +388,6 @@ trans:
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_READY, input_vio);
 	} else {//如果没有的话，就通知write_complete
 		TSVIONBytesSet(vtc->output.vio, vtc->total);
-		TSDebug(PLUGIN_NAME, "xxxxxxxxxxx total = %d",vtc->total);
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
 	}
 

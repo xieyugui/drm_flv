@@ -88,7 +88,7 @@ public:
 class VideoContext
 {
 public:
-	VideoContext(int16_t videotype, int64_t s) : video_type(videotype), start(s), cl(0) ,vtc(NULL), transform_added(false){};
+	VideoContext(int16_t videotype, int64_t s) :start(s), cl(0) , video_type(videotype),  transform_added(false),vtc(NULL){};
 
 	~VideoContext()
 	{
