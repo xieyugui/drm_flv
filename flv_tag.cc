@@ -727,6 +727,7 @@ int FlvTag::update_flv_meta_data() {
 				double data_value = int2double(file_filesize) -  (on_medata_size - amf_data_size(on_metadata));  //此处有bug ，因为在删除onmetadata关键帧的时候, 大小会再次变化，还需要再次修改
 				TSDebug(PLUGIN_NAME,"filesize should be got %lf %lf\n", data_value,int2double(file_filesize));
 				amf_number_set_value(data,double2int(data_value));
+				break;
 			} else {
 				TSDebug(PLUGIN_NAME,"invalid type for filesize: expected %s, got %s\n",
 						get_amf_type_string(AMF_TYPE_NUMBER),
