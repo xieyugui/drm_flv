@@ -216,6 +216,7 @@ public:
 	TSIOBufferReader new_flv_reader;
 
 	FTHandler current_handler;
+
 	int64_t tag_pos; //已经消费了多少字节
 	int64_t cl; //文件总长度
 	int64_t content_length;  //从start 处开始的文件总长度

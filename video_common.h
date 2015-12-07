@@ -100,7 +100,7 @@ public:
 
 public:
 	int64_t start; //请求的range 起始位置
-	int64_t cl;  //加密之后文件的大小，即pcf,pcm 大小
+	int64_t cl;  //加密之后文件的大小，即pcf 大小
 	int16_t video_type;
 	bool transform_added;
 

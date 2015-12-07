@@ -66,6 +66,7 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 	TSMLoc ae_field, range_field;
 	TSCont contp;
 
+
 	method = TSHttpHdrMethodGet(rri->requestBufp, rri->requestHdrp, &method_len);
 	if (method != TS_HTTP_METHOD_GET) {
 	  return TSREMAP_NO_REMAP;

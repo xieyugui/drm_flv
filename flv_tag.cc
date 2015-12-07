@@ -719,6 +719,7 @@ int FlvTag::update_flv_meta_data() {
 		}//end keyframes
 	}// end for
 
+
 	//on_medata_size - amf_data_size(on_metadata);  //等于丢弃了多少关键帧
 	for (n = amf_associative_array_first(on_metadata); n != NULL; n =
 			amf_associative_array_next(n)) {
