@@ -164,13 +164,13 @@ public:
 	int process_tag(TSIOBufferReader reader, bool complete);
 	int64_t write_out(TSIOBuffer buffer);
 	size_t get_drm_header_size();
-	int flv_read_drm_header(drm_header * header);
+	int flv_read_drm_header(TSIOBufferReader readerp, drm_header * header);
 
 	size_t get_flv_header_size();
-	int flv_read_flv_header(flv_header * header);
+	int flv_read_flv_header(TSIOBufferReader readerp, flv_header * header);
 
 	size_t get_flv_tag_size();
-	int flv_read_flv_tag(flv_tag * tag);
+	int flv_read_flv_tag(TSIOBufferReader readerp, flv_tag * tag);
 
 	int process_drm_header();
 	int process_drm_header_videoid();
