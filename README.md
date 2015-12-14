@@ -12,5 +12,5 @@
     
     
 ####flv
-    支持flv 的range 请求
+    支持原始flv 的range 请求
 
