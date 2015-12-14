@@ -10,6 +10,7 @@
     生成flv或mp4文件后,通过flv 和 mp4 的拖拽模块输出新的flv和mp4文件,并对该文件重新进行加密输出。
     
     
-＃ flv
-支持flv 的range 请求
+    
+####flv
+    支持flv 的range 请求
 
