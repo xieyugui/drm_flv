@@ -19,9 +19,10 @@
     along with FLVMeta; if not, write to the Free Software
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 */
+#include "amf.h"
+
 #include <string.h>
 
-#include "amf.h"
 
 /* function common to all array types */
 static void amf_list_init(amf_list * list) {

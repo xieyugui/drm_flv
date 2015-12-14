@@ -12,10 +12,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <ts/ts.h>
-#include "types.h"
 #include "amf.h"
+#include "types.h"
 
-#define PLUGIN_NAME "drm_video"
+#define PLUGIN_NAME "drm_flv"
 
 #define FLV_1_NEED_DES_LENGTH 128
 #define FLV_1_DES_LENGTH 136
@@ -37,7 +37,7 @@
 #define FLV_TAG_TYPE_META   ((uint8)0x12)
 
 typedef enum { VIDEO_VERSION_1 = 1, VIDEO_VERSION_3 = 3, VIDEO_VERSION_4  = 4 } video_version;
-typedef enum { VIDEO_PCF , VIDEO_PCM  } VideoType;
+typedef enum { FLV_VIDEO, VIDEO_PCF , VIDEO_PCM  } VideoType;
 
 typedef struct _drm_header {
 	byte signature[3]; //标志信息
@@ -172,6 +172,8 @@ public:
 
         tdes_key = NULL;
 	}
+
+	void set_flv_function();
 
 	int process_tag(TSIOBufferReader reader, bool complete);
 	int64_t write_out(TSIOBuffer buffer);

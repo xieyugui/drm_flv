@@ -16,7 +16,7 @@
 
 include $(top_srcdir)/build/plugins.mk
 
-pkglib_LTLIBRARIES = drm_video.la
-drm_video_la_SOURCES = drmvideo.cc video_common.h des.h des.cc flv_tag.h flv_tag.cc types.h types.cc amf.h amf.cc
-drm_video_la_LDFLAGS = $(TS_PLUGIN_LDFLAGS)
+pkglib_LTLIBRARIES = drm_flv.la
+drm_flv_la_SOURCES = drm_flv.cc flv_common.h des.h des.cc flv_tag.h flv_tag.cc types.h types.cc amf.h amf.cc
+drm_flv_la_LDFLAGS = $(TS_PLUGIN_LDFLAGS)
 

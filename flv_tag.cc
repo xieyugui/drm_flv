@@ -9,6 +9,7 @@
 #define __FLV_ENCRYPTION_CC__
 
 #include "flv_tag.h"
+
 #include "des.h"
 
 static int64_t IOBufferReaderCopy(TSIOBufferReader readerp, void *buf, int64_t length);
@@ -26,6 +27,10 @@ static uint64_t double2int(double f)
 	union av_intfloat64 v;
 	v.f = f;
 	return v.i;
+}
+
+void FlvTag::set_flv_function(){
+	this->current_handler = &FlvTag::process_initial_flv_header;
 }
 
 int FlvTag::process_tag(TSIOBufferReader readerp, bool complete) {
@@ -225,7 +230,7 @@ int FlvTag::process_decrypt_flv_body() {
 
 	des_buf = (u_char *)TSmalloc(sizeof(u_char) * flv_des_length);
 	for(i = 0; i < flv_des_section_count; i++) {
-		bzero(des_buf, sizeof(des_buf));
+		memset(des_buf, 0, sizeof(des_buf));
 		IOBufferReaderCopy(des_reader, des_buf, flv_des_length);
 		des_decrypt(tdes_key, des_buf, flv_des_length);
 		TSIOBufferWrite(tag_buffer, des_buf, flv_need_des_length);
@@ -430,7 +435,7 @@ int FlvTag::update_flv_meta_data() {
 
 
 	buf = (byte *)TSmalloc(sizeof(byte) * body_length);
-	bzero(buf, sizeof(buf));
+	memset(buf, 0, sizeof(buf));
 	IOBufferReaderCopy(flv_reader, buf, body_length);
 	TSIOBufferReaderConsume(flv_reader, body_length);
 	flv_read_metadata(buf, &name, &data,body_length);
@@ -782,6 +787,7 @@ int FlvTag::process_check_des_body() {
 	size_t need_read_length =  get_flv_header_size()+sizeof(uint32_be) *2 + get_flv_tag_size()+on_meta_data_size;//sizeof(flv_header)+sizeof(uint32_be) *2 +sizeof(flv_tag)+on_meta_data_size;
 	size_t need_des_length = flv_need_des_length * flv_des_section_count;
 
+
 	b_avail = TSIOBufferReaderAvail(flv_reader);
 	avail = TSIOBufferReaderAvail(tag_reader);
 
@@ -804,19 +810,22 @@ int FlvTag::process_check_des_body() {
 		TSIOBufferReaderConsume(flv_reader, b_avail);
 	}
 
-	buf = (u_char *)TSmalloc(sizeof(u_char) * flv_des_length);
+	if(this->video_type == VIDEO_PCF) {
 
-	for(i = 0; i < flv_des_section_count; i++) {
-		bzero(buf, sizeof(buf));
-		IOBufferReaderCopy(new_flv_reader, buf, flv_need_des_length);
-		TSIOBufferReaderConsume(new_flv_reader, flv_need_des_length);
-		//进行des 加密
-		des_encrypt(tdes_key, buf, flv_need_des_length);
-		TSIOBufferWrite(head_buffer, buf, flv_des_length);
+		buf = (u_char *)TSmalloc(sizeof(u_char) * flv_des_length);
+
+		for(i = 0; i < flv_des_section_count; i++) {
+			memset(buf, 0, sizeof(buf));
+			IOBufferReaderCopy(new_flv_reader, buf, flv_need_des_length);
+			TSIOBufferReaderConsume(new_flv_reader, flv_need_des_length);
+			//进行des 加密
+			des_encrypt(tdes_key, buf, flv_need_des_length);
+			TSIOBufferWrite(head_buffer, buf, flv_des_length);
+		}
+
+		TSfree((char *)buf);
+		buf = NULL;
 	}
-
-	TSfree((char *)buf);
-	buf = NULL;
 
 
 	avail = TSIOBufferReaderAvail(new_flv_reader);
