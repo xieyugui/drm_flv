@@ -45,7 +45,8 @@ TSRemapNewInstance(int argc, char *argv[], void **instance, char *errbuf, int er
 }
 
 void TSRemapDeleteInstance(void *instance) {
-	TSfree((u_char *) des_key);
+	if(des_key)
+		TSfree((u_char *) des_key);
 	TSDebug(PLUGIN_NAME,"free des key success");
 }
 
