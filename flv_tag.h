@@ -169,7 +169,6 @@ public:
         		reserved = NULL;
         }
 
-
         tdes_key = NULL;
 	}
 

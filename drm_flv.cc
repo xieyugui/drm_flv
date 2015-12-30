@@ -45,9 +45,7 @@ TSRemapNewInstance(int argc, char *argv[], void **instance, char *errbuf, int er
 }
 
 void TSRemapDeleteInstance(void *instance) {
-	if(des_key)
-		TSfree((u_char *) des_key);
-	TSDebug(PLUGIN_NAME,"free des key success");
+
 }
 
 //只处理pcf (querty带 ?start=字节数) 和 pcm （带range 请求的）

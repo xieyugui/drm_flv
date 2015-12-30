@@ -23,7 +23,7 @@
 
 //#define PLUGIN_NAME "drm_video"
 //des key
-static u_char *des_key;
+static u_char *des_key = NULL;
 
 class IOHandle
 {
@@ -62,7 +62,7 @@ public:
 	    ftag.video_type = video_type;//文件类型
 	    ftag.tdes_key = des_key;
 	    if(video_type == FLV_VIDEO) {
-	    	ftag.set_flv_function();
+	    		ftag.set_flv_function();
 	    }
 	}
 
