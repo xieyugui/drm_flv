@@ -146,7 +146,7 @@ amf_data * amf_data_clone(const amf_data * data);
 /* release the memory of AMF data */
 void       amf_data_free(amf_data * data);
 /* dump AMF data into a stream as text */
-//void       amf_data_dump(TSIOBufferReader readerp, const amf_data * data, int indent_level);
+void       amf_data_dump(FILE * stream, const amf_data * data, int indent_level);
 
 /* return a null AMF object with the specified error code attached to it */
 amf_data * amf_data_error(byte error_code);

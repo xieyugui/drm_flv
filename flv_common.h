@@ -21,9 +21,6 @@
 
 #include "flv_tag.h"
 
-//#define PLUGIN_NAME "drm_video"
-//des key
-static u_char *des_key = NULL;
 
 class IOHandle
 {
@@ -49,24 +46,21 @@ public:
 	TSIOBufferReader reader;
 };
 
-class VideoTransformContext
+class FlvTransformContext
 {
 public:
-	VideoTransformContext(int16_t video_type,int64_t st, int64_t n, u_char *des_key) : total(0), parse_over(false)
+	FlvTransformContext(int16_t video_type,int64_t st, int64_t n, u_char *des_key) : total(0), parse_over(false)
 	{
 	    res_buffer = TSIOBufferCreate();
 	    res_reader = TSIOBufferReaderAlloc(res_buffer);
 
-	    ftag.start = st; //请求的range 起始位置
-	    ftag.cl = n; //加密之后文件的大小，即pcf,pcm 大小
-	    ftag.video_type = video_type;//文件类型
+	    ftag.start = st;
+	    ftag.cl = n;
+	    ftag.video_type = video_type;
 	    ftag.tdes_key = des_key;
-	    if(video_type == FLV_VIDEO) {
-	    		ftag.set_flv_function();
-	    }
 	}
 
-	~VideoTransformContext()
+	~FlvTransformContext()
 	{
 	  if (res_reader) {
 	    TSIOBufferReaderFree(res_reader);
@@ -88,26 +82,26 @@ public:
 	bool  parse_over;
 };
 
-class VideoContext
+class FlvContext
 {
 public:
-	VideoContext(int16_t videotype, int64_t s) :start(s), cl(0) , video_type(videotype),  transform_added(false),vtc(NULL){};
+	FlvContext(int16_t videotype, int64_t s) :start(s), cl(0) , video_type(videotype),  transform_added(false),ftc(NULL){};
 
-	~VideoContext()
+	~FlvContext()
 	{
-		if(vtc) {
-			delete vtc;
-			vtc = NULL;
+		if(ftc) {
+			delete ftc;
+			ftc = NULL;
 		}
 	}
 
 public:
-	int64_t start; //请求的range 起始位置
-	int64_t cl;  //加密之后文件的大小，即pcf 大小
+	int64_t start;
+	int64_t cl;
 	int16_t video_type;
 	bool transform_added;
 
-	VideoTransformContext *vtc;
+	FlvTransformContext *ftc;
 };
 
 #endif /* __VIDEO_COMMON_H__ */

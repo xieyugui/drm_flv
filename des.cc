@@ -12,7 +12,7 @@
 
 static u_char des_block_size = 8;
 
-
+// note: Because each block size is 8, so not less than 8 bytes
 TSReturnCode
 des_encrypt(const u_char *key, u_char *data, unsigned len)
 {

@@ -8,13 +8,15 @@
 #include "flv_common.h"
 
 
-static int drmvideo_handler(TSCont contp, TSEvent event, void *edata);
-static void video_cache_lookup_complete(VideoContext *mc, TSHttpTxn txnp);
-static void video_add_transform(VideoContext *videoc, TSHttpTxn txnp);
-static int video_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */);
-static int video_transform_handler(TSCont contp, VideoContext *videoc);
-static void video_read_response(VideoContext *videoc, TSHttpTxn txnp);
+static int drm_flv_handler(TSCont contp, TSEvent event, void *edata);
+static void flv_cache_lookup_complete(FlvContext *fc, TSHttpTxn txnp);
+static void flv_add_transform(FlvContext *fc, TSHttpTxn txnp);
+static int flv_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */);
+static int flv_transform_handler(TSCont contp, FlvContext *fc);
+static void flv_read_response(FlvContext *fc, TSHttpTxn txnp);
 
+//des key
+static u_char *des_key = NULL;
 
 TSReturnCode
 TSRemapInit(TSRemapInterface *api_info, char *errbuf, int errbuf_size)
@@ -41,6 +43,11 @@ TSRemapNewInstance(int argc, char *argv[], void **instance, char *errbuf, int er
   des_key = (u_char *)(TSstrdup(argv[2]));
   TSDebug(PLUGIN_NAME,"TSRemapNewInstance drm video des key is %s",des_key);
 
+  if(des_key == NULL) {
+	  TSError("[%s] Plugin not initialized, must have des key", PLUGIN_NAME);
+	  return TS_ERROR;
+  }
+
   return TS_SUCCESS;
 }
 
@@ -48,17 +55,13 @@ void TSRemapDeleteInstance(void *instance) {
 
 }
 
-//只处理pcf (querty带 ?start=字节数) 和 pcm （带range 请求的）
 TSRemapStatus
 TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri)
 {
-	const char *method, *query, *path, *range;
-	int method_len, query_len, path_len, range_len;
-	size_t val_len;
-	const char *val;
-	int ret;
+	const char *method, *path, *range;
+	int method_len, path_len, range_len;
 	int64_t start;
-	VideoContext *videoc;
+	FlvContext *fc;
 	VideoType video_type;
 	TSMLoc ae_field, range_field;
 	TSCont contp;
@@ -81,34 +84,10 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 		return TSREMAP_NO_REMAP;
 	}
 	start = 0;
-//	if (video_type == VIDEO_PCF) {
-//		query = TSUrlHttpQueryGet(rri->requestBufp, rri->requestUrl, &query_len);
-//
-//		val = ts_arg(query, query_len, "start", sizeof("start") - 1, &val_len);
-//		if (val != NULL) {
-//		  ret = sscanf(val, "%ld", &start);
-//		  if (ret != 1)
-//			start = 0;
-//		}
-//
-//		if (start < 0 ) {
-//			TSHttpTxnSetHttpRetStatus(rh, TS_HTTP_STATUS_BAD_REQUEST);
-//			TSHttpTxnErrorBodySet(rh, TSstrdup("Invalid request."), sizeof("Invalid request.") - 1, NULL);
-//			//return TSREMAP_NO_REMAP;//?需不需要  删除query ，走正常的流程
-//		}
-//		//删除query string
-//		if (TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, "", -1) == TS_ERROR) {
-//		    return TSREMAP_NO_REMAP;
-//		}
-//		// just for debug
-//		char *s;
-//		int len;
-//		s = TSUrlStringGet(rri->requestBufp, rri->requestUrl, &len);
-//		TSDebug(PLUGIN_NAME, "new request string is [%.*s]", len, s);
-//		TSfree(s);
-//	} else if(video_type == VIDEO_PCM) {  //TODO VIDEO_PCM
-//
-//	}
+
+	if (TSUrlHttpQuerySet(rri->requestBufp, rri->requestUrl, "", -1) == TS_ERROR) {
+		return TSREMAP_NO_REMAP;
+	}
 
 	// remove Range  request Range: bytes=500-999, response Content-Range: bytes 21010-47021/47022
 	range_field = TSMimeHdrFieldFind(rri->requestBufp, rri->requestHdrp, TS_MIME_FIELD_RANGE, TS_MIME_LEN_RANGE);
@@ -116,8 +95,9 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 		range = TSMimeHdrFieldValueStringGet(rri->requestBufp, rri->requestHdrp, range_field, -1, &range_len);
 		size_t b_len = sizeof("bytes=") -1;
 		if (range && (strncasecmp(range, "bytes=", b_len) == 0)) {
-			//获取range value
+			//get range value
 			start = (int64_t)strtol(range+b_len, NULL, 10);
+			TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%ld ", start);
 		 }
 		TSMimeHdrFieldDestroy(rri->requestBufp, rri->requestHdrp, range_field);
 		TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, range_field);
@@ -126,10 +106,9 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 	if (start < 0 ) {
 		TSHttpTxnSetHttpRetStatus(rh, TS_HTTP_STATUS_BAD_REQUEST);
 		TSHttpTxnErrorBodySet(rh, TSstrdup("Invalid request."), sizeof("Invalid request.") - 1, NULL);
-		return TSREMAP_NO_REMAP;//?需不需要  删除query ，走正常的流程
 	}
 
-	if (start == 0)//如果不是range 请求就不处理
+	if (start == 0)
 	  return TSREMAP_NO_REMAP;
 
 	// remove Accept-Encoding
@@ -139,11 +118,11 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 	  TSHandleMLocRelease(rri->requestBufp, rri->requestHdrp, ae_field);
 	}
 
-	videoc = new VideoContext(video_type,start);
+	fc = new FlvContext(video_type,start);
 	TSDebug(PLUGIN_NAME, "TSRemapDoRemap start=%ld, type=%d", start, video_type);
 
-	contp = TSContCreate((TSEventFunc) drmvideo_handler, NULL);
-	TSContDataSet(contp, videoc);
+	contp = TSContCreate((TSEventFunc) drm_flv_handler, NULL);
+	TSContDataSet(contp, fc);
 	TSHttpTxnHookAdd(rh, TS_HTTP_CACHE_LOOKUP_COMPLETE_HOOK, contp);
 	TSHttpTxnHookAdd(rh, TS_HTTP_READ_RESPONSE_HDR_HOOK, contp);
 	TSHttpTxnHookAdd(rh, TS_HTTP_TXN_CLOSE_HOOK, contp);
@@ -152,26 +131,26 @@ TSRemapDoRemap(void * /* ih ATS_UNUSED */, TSHttpTxn rh, TSRemapRequestInfo *rri
 }
 
 static int
-drmvideo_handler(TSCont contp, TSEvent event, void *edata) {
+drm_flv_handler(TSCont contp, TSEvent event, void *edata) {
 
 	TSHttpTxn txnp;
-	VideoContext *videoc;
+	FlvContext *fc;
 
 	txnp = (TSHttpTxn)edata;
-	videoc = (VideoContext *)TSContDataGet(contp);
+	fc = (FlvContext *)TSContDataGet(contp);
 
 	switch (event) {
 	case TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE:
-	  video_cache_lookup_complete(videoc, txnp);
+	  flv_cache_lookup_complete(fc, txnp);
 	  break;
 
 	case TS_EVENT_HTTP_READ_RESPONSE_HDR:
-	  video_read_response(videoc, txnp);
+	  flv_read_response(fc, txnp);
 	  break;
 
 	case TS_EVENT_HTTP_TXN_CLOSE:
 		TSDebug(PLUGIN_NAME, "TS_EVENT_HTTP_TXN_CLOSE");
-		delete videoc;
+		delete fc;
 		TSContDestroy(contp);
 		break;
 
@@ -184,7 +163,7 @@ drmvideo_handler(TSCont contp, TSEvent event, void *edata) {
 }
 
 static void
-video_read_response(VideoContext *videoc, TSHttpTxn txnp)
+flv_read_response(FlvContext *fc, TSHttpTxn txnp)
 {
 	TSMBuffer bufp;
 	TSMLoc hdrp;
@@ -212,8 +191,8 @@ video_read_response(VideoContext *videoc, TSHttpTxn txnp)
     if (n <= 0)
         goto release;
 
-    videoc->cl = n;
-    video_add_transform(videoc, txnp);
+    fc->cl = n;
+    flv_add_transform(fc, txnp);
 
 release:
 
@@ -222,7 +201,7 @@ release:
 }
 
 static void
-video_cache_lookup_complete(VideoContext *videoc, TSHttpTxn txnp)
+flv_cache_lookup_complete(FlvContext *fc, TSHttpTxn txnp)
 {
 	TSMBuffer bufp;
 	TSMLoc hdrp;
@@ -260,8 +239,8 @@ video_cache_lookup_complete(VideoContext *videoc, TSHttpTxn txnp)
 	if (n <= 0)
 	  goto release;
 
-	videoc->cl = n;
-	video_add_transform(videoc, txnp);
+	fc->cl = n;
+	flv_add_transform(fc, txnp);
 
 release:
 
@@ -269,33 +248,33 @@ release:
 }
 
 static void
-video_add_transform(VideoContext *videoc, TSHttpTxn txnp)
+flv_add_transform(FlvContext *fc, TSHttpTxn txnp)
 {
 	TSVConn connp;
-	VideoTransformContext *vtc;
+	FlvTransformContext *ftc;
 
-	if (videoc->transform_added)
+	if (fc->transform_added)
 		return;
 
-	vtc = new VideoTransformContext(videoc->video_type,videoc->start, videoc->cl, des_key);
+	ftc = new FlvTransformContext(fc->video_type,fc->start, fc->cl, des_key);
 
 	TSHttpTxnUntransformedRespCache(txnp, 1);
 	TSHttpTxnTransformedRespCache(txnp, 0);
 
-	connp = TSTransformCreate(video_transform_entry, txnp);
-	TSContDataSet(connp, videoc);
+	connp = TSTransformCreate(flv_transform_entry, txnp);
+	TSContDataSet(connp, fc);
 	TSHttpTxnHookAdd(txnp, TS_HTTP_RESPONSE_TRANSFORM_HOOK, connp);
-	videoc->transform_added = true;
-	videoc->vtc = vtc;
+	fc->transform_added = true;
+	fc->ftc = ftc;
 
 }
 
 static int
-video_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */)
+flv_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */)
 {
 	TSDebug(PLUGIN_NAME, "start TS_HTTP_RESPONSE_TRANSFORM_HOOK");
 	TSVIO input_vio;
-	VideoContext *videoc = (VideoContext *)TSContDataGet(contp);
+	FlvContext *fc = (FlvContext *)TSContDataGet(contp);
 
 	if (TSVConnClosedGet(contp)) {
 		TSContDestroy(contp);
@@ -314,7 +293,7 @@ video_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */
 
 	case TS_EVENT_VCONN_WRITE_READY:
 	default:
-		video_transform_handler(contp, videoc);
+		flv_transform_handler(contp, fc);
 		break;
 	}
 
@@ -322,27 +301,27 @@ video_transform_entry(TSCont contp, TSEvent event, void * /* edata ATS_UNUSED */
 }
 
 static int
-video_transform_handler(TSCont contp, VideoContext *videoc)
+flv_transform_handler(TSCont contp, FlvContext *fc)
 {
 	TSVConn output_conn;
 	TSVIO input_vio;
 	TSIOBufferReader input_reader;
-	int64_t avail, toread, upstream_done, tag_avail;
+	int64_t avail, toread, upstream_done, tag_avail, dup_avail;
 	int ret;
 	bool write_down;
 	FlvTag *ftag;
-	VideoTransformContext *vtc;
-	vtc = videoc->vtc;
-	ftag = &(vtc->ftag);
+	FlvTransformContext *ftc;
+	ftc = fc->ftc;
+	ftag = &(ftc->ftag);
 
 	output_conn = TSTransformOutputVConnGet(contp);
 	input_vio = TSVConnWriteVIOGet(contp);
 	input_reader = TSVIOReaderGet(input_vio);
 
 	if (!TSVIOBufferGet(input_vio)) {
-		if (vtc->output.vio) {
-			TSVIONBytesSet(vtc->output.vio, vtc->total);
-			TSVIOReenable(vtc->output.vio);
+		if (ftc->output.vio) {
+			TSVIONBytesSet(ftc->output.vio, ftc->total);
+			TSVIOReenable(ftc->output.vio);
 		}
 		return 1;
 	}
@@ -350,47 +329,57 @@ video_transform_handler(TSCont contp, VideoContext *videoc)
 	avail = TSIOBufferReaderAvail(input_reader);
 	upstream_done = TSVIONDoneGet(input_vio);
 
-	TSIOBufferCopy(vtc->res_buffer, input_reader, avail, 0);
+	TSIOBufferCopy(ftc->res_buffer, input_reader, avail, 0);
 	TSIOBufferReaderConsume(input_reader, avail);
 	TSVIONDoneSet(input_vio, upstream_done + avail);
 
 	toread = TSVIONTodoGet(input_vio);
 	write_down = false;
 
-	if (!vtc->parse_over) {//有没有开始解析
-		ret = ftag->process_tag(vtc->res_reader, toread <= 0);
-		if (ret == 0) { //为0 说明还没解析好
+	if (!ftc->parse_over) {
+		ret = ftag->process_tag(ftc->res_reader, toread <= 0);
+		if (ret == 0) {
 			goto trans;
 		}
-		vtc->parse_over = true;
+		ftc->parse_over = true;
 
-		vtc->output.buffer = TSIOBufferCreate();
-		vtc->output.reader = TSIOBufferReaderAlloc(vtc->output.buffer);
-		vtc->output.vio = TSVConnWrite(output_conn, contp, vtc->output.reader, ftag->content_length);
+		ftc->output.buffer = TSIOBufferCreate();
+		ftc->output.reader = TSIOBufferReaderAlloc(ftc->output.buffer);
+		ftc->output.vio = TSVConnWrite(output_conn, contp, ftc->output.reader, ftag->content_length);
 
-		tag_avail = ftag->write_out(vtc->output.buffer);
-		if (tag_avail > 0) {//专门来处理头的数据
-			vtc->total += tag_avail;
-			write_down = true;
+		if(ret < 0) {
+			dup_avail = TSIOBufferReaderAvail(ftag->dup_reader);
+			if (dup_avail > 0) {
+				TSIOBufferCopy(ftc->output.buffer, ftag->dup_reader, dup_avail, 0);
+				TSIOBufferReaderConsume(ftag->dup_reader, dup_avail);
+				ftc->total += dup_avail;
+				write_down = true;
+			}
+		} else {
+			tag_avail = ftag->write_out(ftc->output.buffer);
+			if (tag_avail > 0) {
+				ftc->total += tag_avail;
+				write_down = true;
+			}
 		}
 	}
 
-	avail = TSIOBufferReaderAvail(vtc->res_reader);
-	if (avail > 0) {//将res_reader的数据copy 到output
-		TSIOBufferCopy(vtc->output.buffer, vtc->res_reader, avail, 0);
-		TSIOBufferReaderConsume(vtc->res_reader, avail);
-		vtc->total += avail;
+	avail = TSIOBufferReaderAvail(ftc->res_reader);
+	if (avail > 0) {
+		TSIOBufferCopy(ftc->output.buffer, ftc->res_reader, avail, 0);
+		TSIOBufferReaderConsume(ftc->res_reader, avail);
+		ftc->total += avail;
 		write_down = true;
 	}
 
 trans:
 	if (write_down)
-		TSVIOReenable(vtc->output.vio);
+		TSVIOReenable(ftc->output.vio);
 
-	if (toread > 0) {//如果还有需要读的话，继续write_ready
+	if (toread > 0) {
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_READY, input_vio);
-	} else {//如果没有的话，就通知write_complete
-		TSVIONBytesSet(vtc->output.vio, vtc->total);
+	} else {
+		TSVIONBytesSet(ftc->output.vio, ftc->total);
 		TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
 	}
 
